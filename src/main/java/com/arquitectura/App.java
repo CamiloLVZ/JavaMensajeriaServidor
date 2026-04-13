@@ -15,9 +15,12 @@ public class App
             }
 
             properties.load(inputStream);
-            System.out.println(properties.getProperty("transfer-protocol"));
+            System.out.println("Protocolo: " + properties.getProperty("transfer-protocol"));
+            System.out.println("Puerto: " + properties.getProperty("server.port"));
+            System.out.println("Clientes Maximos: " + properties.getProperty("max-clients"));
         } catch (IOException e) {
             throw new RuntimeException("No fue posible leer application.properties.", e);
         }
+
     }
 }
