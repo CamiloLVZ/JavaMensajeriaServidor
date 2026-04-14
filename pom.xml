@@ -21,6 +21,13 @@
   </properties>
 
   <dependencies>
+
+    <dependency>
+      <groupId>com.arquitectura</groupId>
+      <artifactId>Mensajeria</artifactId>
+      <version>1.0</version>
+    </dependency>
+
   </dependencies>
 
   <build>
