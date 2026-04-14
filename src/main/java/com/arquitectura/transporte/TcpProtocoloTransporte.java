@@ -4,8 +4,11 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.logging.Logger;
 
 public class TcpProtocoloTransporte implements ProtocoloTransporte {
+
+    private static final Logger LOGGER = Logger.getLogger(TcpProtocoloTransporte.class.getName());
 
     private ServerSocket serverSocket;
     private boolean activo = false;
@@ -15,6 +18,7 @@ public class TcpProtocoloTransporte implements ProtocoloTransporte {
         try {
             serverSocket = new ServerSocket(puerto);
             activo = true;
+            LOGGER.info(() -> "Transporte TCP iniciado en puerto " + puerto);
         } catch (Exception e) {
             throw new RuntimeException("Error iniciando TCP", e);
         }
@@ -25,6 +29,7 @@ public class TcpProtocoloTransporte implements ProtocoloTransporte {
         try (Socket socket = new Socket(hostDestino, puertoDestino);
              OutputStream output = socket.getOutputStream()) {
 
+            LOGGER.info(() -> "Enviando " + datos.length + " bytes por TCP a " + hostDestino + ":" + puertoDestino);
             output.write(datos);
             output.flush();
 
@@ -35,12 +40,12 @@ public class TcpProtocoloTransporte implements ProtocoloTransporte {
 
     @Override
     public PaqueteDatos recibir() {
-        try {
-            Socket cliente = serverSocket.accept(); // BLOQUEANTE
+        try (Socket cliente = serverSocket.accept();
+             InputStream input = cliente.getInputStream()) {
 
-            InputStream input = cliente.getInputStream();
-
-            byte[] buffer = input.readAllBytes(); // simplificado
+            LOGGER.info(() -> "Conexion TCP aceptada desde " + cliente.getInetAddress().getHostAddress() + ":" + cliente.getPort());
+            byte[] buffer = input.readAllBytes();
+            LOGGER.info(() -> "Se recibieron " + buffer.length + " bytes por TCP");
 
             return new PaqueteDatos(buffer, cliente.getInetAddress().getHostAddress(), cliente.getPort());
 
@@ -55,6 +60,7 @@ public class TcpProtocoloTransporte implements ProtocoloTransporte {
         try {
             if (serverSocket != null && !serverSocket.isClosed()) {
                 serverSocket.close();
+                LOGGER.info("Transporte TCP detenido");
             }
         } catch (Exception e) {
             throw new RuntimeException("Error cerrando TCP", e);
