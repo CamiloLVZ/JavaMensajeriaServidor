@@ -27,7 +27,9 @@ public class Main {
         Properties properties = new Properties();
 
         try (InputStream inputStream = Main.class.getClassLoader().getResourceAsStream("application.properties")) {
-
+            if (inputStream == null) {
+                throw new IllegalStateException("No se encontro application.properties en el classpath");
+            }
             properties.load(inputStream);
 
             String protocolo = properties.getProperty("transfer-protocol");
