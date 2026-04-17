@@ -85,13 +85,18 @@ public class TcpProtocoloTransporte implements ProtocoloTransporte {
             LOGGER.fine(() -> "Mensaje JSON recibido, longitud: " + json.length());
 
             // Procesar el JSON para detectar si es una transferencia de chunk
-            procesarTransferencia(json);
+            boolean esChunkStreaming = procesarTransferencia(json);
 
             // Enviar respuesta OK al cliente
             try (PrintWriter writer = new PrintWriter(
                     new OutputStreamWriter(cliente.getOutputStream(), StandardCharsets.UTF_8))) {
                 writer.println("{\"estado\":\"OK\"}");
                 writer.flush();
+            }
+
+            if (esChunkStreaming) {
+                // El chunk ya fue procesado por este transporte, no debe pasar al router de negocio
+                return new PaqueteDatos(new byte[0], cliente);
             }
 
             return new PaqueteDatos(json.getBytes(StandardCharsets.UTF_8), cliente);
@@ -105,26 +110,26 @@ public class TcpProtocoloTransporte implements ProtocoloTransporte {
     /**
      * Procesa un mensaje JSON de transferencia de chunk
      */
-    private void procesarTransferencia(String json) {
+    private boolean procesarTransferencia(String json) {
         try {
             JsonNode node = MAPPER.readTree(json);
 
             // Verificar si es un mensaje de transferencia de chunk
             if (!node.has("tipo")) {
                 // No es un mensaje de transferencia, ignorar silenciosamente
-                return;
+                return false;
             }
 
             String tipo = node.get("tipo").asText();
             if (!tipo.equals("CHUNK")) {
                 // No es un chunk, ignorar silenciosamente
-                return;
+                return false;
             }
 
             // Validar que tenga todos los campos requeridos
             if (!node.has("id") || !node.has("chunk") || !node.has("total") || !node.has("datos")) {
                 LOGGER.warning("Mensaje CHUNK incompleto, faltan campos");
-                return;
+                return true;
             }
 
             String transferId = node.get("id").asText();
@@ -154,11 +159,15 @@ public class TcpProtocoloTransporte implements ProtocoloTransporte {
                 finalizarTransferencia(transferId, info);
             }
 
+            return true;
+
         } catch (IllegalArgumentException e) {
             // Error decodificando Base64
             LOGGER.warning(() -> "Error decodificando Base64 en chunk: " + e.getMessage());
+            return true;
         } catch (Exception e) {
             LOGGER.warning(() -> "Error procesando transferencia: " + e.getMessage());
+            return false;
         }
     }
 
@@ -237,4 +246,3 @@ public class TcpProtocoloTransporte implements ProtocoloTransporte {
         }
     }
 }
-

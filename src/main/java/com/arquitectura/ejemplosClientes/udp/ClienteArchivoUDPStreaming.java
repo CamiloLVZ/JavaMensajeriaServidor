@@ -20,7 +20,7 @@ import java.util.logging.Logger;
 public class ClienteArchivoUDPStreaming {
 
     private static final Logger LOGGER = Logger.getLogger(ClienteArchivoUDPStreaming.class.getName());
-    private static final int TAMAÑO_CHUNK = 2 * 1024 * 1024; // 2 MB por chunk
+    private static final int TAMAÑO_CHUNK = 60 * 1024; // 60 KB para evitar datagramas UDP demasiado grandes
     private static final long ACK_TIMEOUT_MS = 10000; // 10 segundos timeout
     private static final int MAX_REINTENTOS = 5;
 
@@ -118,6 +118,9 @@ public class ClienteArchivoUDPStreaming {
         while (!ackRecibido && intentos < MAX_REINTENTOS) {
             try {
                 byte[] frameSerialized = frame.serializar();
+                if (frameSerialized.length > 65000) {
+                    throw new IOException("Frame UDP excede tamaño máximo permitido: " + frameSerialized.length + " bytes");
+                }
                 DatagramPacket paquete = new DatagramPacket(frameSerialized, frameSerialized.length,
                                                             direccion, puerto);
                 socket.send(paquete);
@@ -133,9 +136,7 @@ public class ClienteArchivoUDPStreaming {
 
                 try {
                     socket.receive(ackPacket);
-                    String ackStr = new String(bufferAck, 0, ackPacket.getLength(), "UTF-8");
-
-                    if (ackStr.contains(frame.getTransferId()) && ackStr.contains(String.valueOf(indexChunk))) {
+                    if (esAckValido(bufferAck, ackPacket.getLength(), frame.getTransferId(), indexChunk)) {
                         ackRecibido = true;
                         LOGGER.finer(() -> "ACK recibido para chunk " + indexChunk);
                     }
@@ -153,6 +154,19 @@ public class ClienteArchivoUDPStreaming {
         }
 
         return ackRecibido;
+    }
+
+    private boolean esAckValido(byte[] ackData, int length, String transferIdEsperado, long chunkEsperado) {
+        try (DataInputStream dis = new DataInputStream(new ByteArrayInputStream(ackData, 0, length))) {
+            String tipo = dis.readUTF();
+            String transferId = dis.readUTF();
+            long chunk = dis.readLong();
+            return "ACK".equals(tipo) &&
+                   transferIdEsperado.equals(transferId) &&
+                   chunkEsperado == chunk;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     public static void main(String[] args) throws Exception {
@@ -193,4 +207,3 @@ public class ClienteArchivoUDPStreaming {
         }
     }
 }
-
