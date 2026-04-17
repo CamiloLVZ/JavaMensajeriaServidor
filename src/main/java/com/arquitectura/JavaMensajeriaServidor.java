@@ -6,13 +6,14 @@ import com.arquitectura.mensajeria.Mensaje;
 import com.arquitectura.mensajeria.Respuesta;
 import com.arquitectura.router.MensajeRouter;
 import com.arquitectura.router.MensajeRouterFactory;
-import com.arquitectura.transporte.PaqueteDatos;
-import com.arquitectura.transporte.ProtocoloTransporte;
-import com.arquitectura.transporte.ProtocoloTransporteFactory;
 
-import java.io.InputStream;
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.net.ServerSocket;
+import java.net.Socket;
 import java.nio.charset.StandardCharsets;
-import java.util.Properties;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -23,46 +24,51 @@ public class JavaMensajeriaServidor {
     public static void main(String[] args) {
         LogConfig.configureRootLogger();
 
-        Properties properties = new Properties();
+        int puerto = 8080;
 
-        try (InputStream inputStream = JavaMensajeriaServidor.class.getClassLoader().getResourceAsStream("application.properties")) {
-            if (inputStream == null) {
-                throw new IllegalStateException("No se encontro application.properties en el classpath.");
-            }
-
-            properties.load(inputStream);
-            String protocolo = properties.getProperty("transfer-protocol");
-            int puerto = Integer.parseInt(properties.getProperty("server.port"));
-
-            LOGGER.info(() -> "Configuracion cargada. Protocolo=" + protocolo + ", puerto=" + puerto);
-
-            ProtocoloTransporte transporte = ProtocoloTransporteFactory.crear(protocolo);
-            MensajeRouter router = MensajeRouterFactory.crearRouter();
-
-            transporte.iniciar(puerto);
+        try (ServerSocket serverSocket = new ServerSocket(puerto)) {
             LOGGER.info(() -> "Servidor escuchando en puerto " + puerto);
 
+            MensajeRouter router = MensajeRouterFactory.crearRouter();
+
             while (true) {
-                LOGGER.info("Esperando mensaje entrante");
+                LOGGER.info("Esperando cliente...");
 
-                PaqueteDatos paquete = transporte.recibir();
-                String json = new String(paquete.getData(), StandardCharsets.UTF_8);
+                try (Socket cliente = serverSocket.accept();
+                     BufferedReader reader = new BufferedReader(new InputStreamReader(cliente.getInputStream(), StandardCharsets.UTF_8));
+                     BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(cliente.getOutputStream(), StandardCharsets.UTF_8))) {
 
-                LOGGER.info(() -> "Mensaje recibido desde " + paquete.getHostOrigen() + ":" + paquete.getPuertoOrigen());
-                LOGGER.fine(() -> "Payload JSON recibido: " + json);
+                    LOGGER.info(() -> "Cliente conectado desde " + cliente.getInetAddress().getHostAddress() + ":" + cliente.getPort());
 
-                Mensaje<?> mensaje = JsonUtil.fromJson(json, Mensaje.class);
-                LOGGER.info(() -> "Procesando accion " + mensaje.getAccion() + " de tipo " + mensaje.getTipo());
+                    String json = reader.readLine();
+                    if (json == null || json.isBlank()) {
+                        LOGGER.warning(() -> "Se recibio un mensaje vacio desde "
+                                + cliente.getInetAddress().getHostAddress() + ":" + cliente.getPort());
+                        continue;
+                    }
 
-                Respuesta<?> respuesta = router.responder(mensaje);
-                String jsonRespuesta = JsonUtil.toJson(respuesta);
+                    LOGGER.info("JSON recibido del cliente");
+                    LOGGER.fine(() -> "Payload recibido: " + json);
 
-                LOGGER.fine(() -> "Payload JSON respuesta: " + jsonRespuesta);
+                    Mensaje<?> mensaje = JsonUtil.fromJson(json, Mensaje.class);
+                    LOGGER.info(() -> "Accion recibida: " + mensaje.getAccion());
 
-                transporte.enviar(jsonRespuesta.getBytes(StandardCharsets.UTF_8), paquete.getHostOrigen(), paquete.getPuertoOrigen());
-                LOGGER.info(() -> "Respuesta enviada a " + paquete.getHostOrigen() + ":" + paquete.getPuertoOrigen());
+                    Respuesta<?> respuesta = router.responder(mensaje);
+                    String jsonRespuesta = JsonUtil.toJson(respuesta);
+
+                    LOGGER.info("Respuesta generada");
+                    LOGGER.fine(() -> "Payload respuesta: " + jsonRespuesta);
+
+                    writer.write(jsonRespuesta);
+                    writer.newLine();
+                    writer.flush();
+
+                    LOGGER.info(() -> "Respuesta enviada a "
+                            + cliente.getInetAddress().getHostAddress() + ":" + cliente.getPort());
+                } catch (Exception e) {
+                    LOGGER.log(Level.WARNING, "Error atendiendo cliente", e);
+                }
             }
-
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "Fallo fatal en el servidor", e);
         }

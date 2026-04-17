@@ -3,61 +3,70 @@ package com.arquitectura;
 import com.arquitectura.infraestructura.JsonUtil;
 import com.arquitectura.mensajeria.Mensaje;
 import com.arquitectura.mensajeria.Metadata;
+import com.arquitectura.mensajeria.Respuesta;
 import com.arquitectura.mensajeria.enums.Accion;
 import com.arquitectura.mensajeria.enums.Protocolo;
 import com.arquitectura.mensajeria.enums.TipoMensaje;
 import com.arquitectura.mensajeria.payload.PayloadConectar;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
+import java.io.*;
 import java.net.Socket;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
 public class ClienteSimulado {
 
-    public static void main(String[] args) throws IOException {
-        String protocolo = "TCP";
+    public static void main(String[] args) {
+
         String host = "localhost";
         int puerto = 8080;
-        Socket socket = new Socket(host, puerto);
 
-        Mensaje<PayloadConectar> mensaje = new Mensaje<>();
-        mensaje.setTipo(TipoMensaje.REQUEST);
-        mensaje.setAccion(Accion.CONECTAR);
+        try (Socket socket = new Socket(host, puerto)) {
 
-        Metadata meta = new Metadata();
-        meta.setIdMensaje(UUID.randomUUID().toString());
-        meta.setTimestamp(LocalDateTime.now());
-        meta.setProtocolo(Protocolo.TCP);
+            System.out.println("[CLIENTE] Conectado a " + host + ":" + puerto);
 
-        mensaje.setMetadata(meta);
+            BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8));
+            BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
 
-        PayloadConectar payload = new PayloadConectar();
-        payload.setUsername("juan");
+            Mensaje<PayloadConectar> mensaje = new Mensaje<>();
+            mensaje.setTipo(TipoMensaje.REQUEST);
+            mensaje.setAccion(Accion.CONECTAR);
 
-        mensaje.setPayload(payload);
+            Metadata meta = new Metadata();
+            meta.setIdMensaje(UUID.randomUUID().toString());
+            meta.setTimestamp(LocalDateTime.now());
+            meta.setProtocolo(Protocolo.TCP);
 
-        String json = JsonUtil.toJson(mensaje);
+            mensaje.setMetadata(meta);
 
-        System.out.println("[CLIENTE] Enviando:");
-        System.out.println(json);
+            PayloadConectar payload = new PayloadConectar();
+            payload.setUsername("juan");
 
-        OutputStream out = socket.getOutputStream();
-        out.write(json.getBytes());
-        out.flush();
+            mensaje.setPayload(payload);
 
+            String json = JsonUtil.toJson(mensaje);
 
-        InputStream in = socket.getInputStream();
-        byte[] buffer = new byte[4096];
-        int bytesRead = in.read(buffer);
+            System.out.println("[CLIENTE] Enviando:");
+            System.out.println(json);
 
-        String respuesta = new String(buffer, 0, bytesRead);
+            writer.write(json);
+            writer.newLine();
+            writer.flush();
 
-        System.out.println(respuesta);
+            System.out.println("[CLIENTE] Esperando respuesta...");
 
-        socket.close();
+            String jsonRespuesta = reader.readLine();
+
+            System.out.println("[CLIENTE] Respuesta recibida:");
+            System.out.println(jsonRespuesta);
+
+            Respuesta<?> respuesta = JsonUtil.fromJson(jsonRespuesta, Respuesta.class);
+
+            System.out.println("[CLIENTE] Estado: " + respuesta.getEstado());
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
-
 }

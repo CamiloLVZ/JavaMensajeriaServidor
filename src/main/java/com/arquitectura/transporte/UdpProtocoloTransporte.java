@@ -46,11 +46,11 @@ public class UdpProtocoloTransporte implements ProtocoloTransporte {
             byte[] datos = new byte[paquete.getLength()];
             System.arraycopy(paquete.getData(), 0, datos, 0, paquete.getLength());
 
-            LOGGER.info(() -> "Datagrama UDP recibido desde "
-                    + paquete.getAddress().getHostAddress() + ":" + paquete.getPort()
-                    + " con " + datos.length + " bytes");
-
-            return new PaqueteDatos(datos, paquete.getAddress().getHostAddress(), paquete.getPort());
+            return new PaqueteDatos(
+                    datos,
+                    paquete.getAddress().getHostAddress(),
+                    paquete.getPort()
+            );
 
         } catch (Exception e) {
             throw new RuntimeException("Error recibiendo datos por UDP", e);

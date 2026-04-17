@@ -1,9 +1,12 @@
 package com.arquitectura.transporte;
 
+import java.io.BufferedReader;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.nio.charset.StandardCharsets;
 import java.util.logging.Logger;
 
 public class TcpProtocoloTransporte implements ProtocoloTransporte {
@@ -40,14 +43,20 @@ public class TcpProtocoloTransporte implements ProtocoloTransporte {
 
     @Override
     public PaqueteDatos recibir() {
-        try (Socket cliente = serverSocket.accept();
-             InputStream input = cliente.getInputStream()) {
 
-            LOGGER.info(() -> "Conexion TCP aceptada desde " + cliente.getInetAddress().getHostAddress() + ":" + cliente.getPort());
-            byte[] buffer = input.readAllBytes();
-            LOGGER.info(() -> "Se recibieron " + buffer.length + " bytes por TCP");
+        try {
+            Socket cliente = serverSocket.accept();
 
-            return new PaqueteDatos(buffer, cliente.getInetAddress().getHostAddress(), cliente.getPort());
+            BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(cliente.getInputStream())
+            );
+
+            String json = reader.readLine();
+
+            return new PaqueteDatos(
+                    json.getBytes(StandardCharsets.UTF_8),
+                    cliente
+            );
 
         } catch (Exception e) {
             throw new RuntimeException("Error recibiendo datos por TCP", e);
