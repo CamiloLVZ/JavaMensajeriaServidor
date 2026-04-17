@@ -1,9 +1,9 @@
-package com.arquitectura;
+package com.arquitectura.aplicacion;
 
-import com.arquitectura.infraestructura.JsonUtil;
+import com.arquitectura.infraestructura.serializacion.JsonUtil;
 import com.arquitectura.mensajeria.Mensaje;
 import com.arquitectura.mensajeria.Respuesta;
-import com.arquitectura.router.MensajeRouter;
+import com.arquitectura.aplicacion.router.MensajeRouter;
 
 import java.nio.charset.StandardCharsets;
 

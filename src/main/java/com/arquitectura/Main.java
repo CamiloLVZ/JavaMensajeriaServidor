@@ -1,20 +1,22 @@
 package com.arquitectura;
 
-import com.arquitectura.infraestructura.LogConfig;
-import com.arquitectura.router.MensajeRouter;
-import com.arquitectura.router.MensajeRouterFactory;
-import com.arquitectura.transporte.PaqueteDatos;
-import com.arquitectura.transporte.ProtocoloTransporte;
-import com.arquitectura.transporte.ProtocoloTransporteFactory;
+import com.arquitectura.aplicacion.ProcesadorMensajes;
+import com.arquitectura.aplicacion.RespuestaSender;
+import com.arquitectura.infraestructura.logs.LogConfig;
+import com.arquitectura.aplicacion.router.MensajeRouter;
+import com.arquitectura.aplicacion.router.MensajeRouterFactory;
+import com.arquitectura.comun.dto.PaqueteDatos;
+import com.arquitectura.infraestructura.transporte.ProtocoloTransporte;
+import com.arquitectura.infraestructura.transporte.ProtocoloTransporteFactory;
 
 import java.io.*;
 import java.util.Properties;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-public class JavaMensajeriaServidor {
+public class Main {
 
-    private static final Logger LOGGER = Logger.getLogger(JavaMensajeriaServidor.class.getName());
+    private static final Logger LOGGER = Logger.getLogger(Main.class.getName());
 
     public static void main(String[] args) {
 
@@ -22,7 +24,7 @@ public class JavaMensajeriaServidor {
 
         Properties properties = new Properties();
 
-        try (InputStream inputStream = JavaMensajeriaServidor.class.getClassLoader().getResourceAsStream("application.properties")) {
+        try (InputStream inputStream = Main.class.getClassLoader().getResourceAsStream("application.properties")) {
 
             properties.load(inputStream);
 

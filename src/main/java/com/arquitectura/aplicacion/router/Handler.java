@@ -1,4 +1,4 @@
-package com.arquitectura.router;
+package com.arquitectura.aplicacion.router;
 
 import com.arquitectura.mensajeria.*;
 

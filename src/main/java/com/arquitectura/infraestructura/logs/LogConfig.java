@@ -1,4 +1,4 @@
-package com.arquitectura.infraestructura;
+package com.arquitectura.infraestructura.logs;
 
 import java.util.logging.ConsoleHandler;
 import java.util.logging.Formatter;

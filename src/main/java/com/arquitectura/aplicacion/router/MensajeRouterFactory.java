@@ -1,7 +1,7 @@
-package com.arquitectura.router;
+package com.arquitectura.aplicacion.router;
 
 import com.arquitectura.mensajeria.enums.Accion;
-import com.arquitectura.handlers.ConectarHandler;
+import com.arquitectura.dominio.handlers.ConectarHandler;
 
 public class MensajeRouterFactory {
 

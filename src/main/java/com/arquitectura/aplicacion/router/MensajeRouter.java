@@ -1,6 +1,6 @@
-package com.arquitectura.router;
+package com.arquitectura.aplicacion.router;
 
-import com.arquitectura.infraestructura.JsonUtil;
+import com.arquitectura.infraestructura.serializacion.JsonUtil;
 import com.arquitectura.mensajeria.ErrorDetalle;
 import com.arquitectura.mensajeria.Mensaje;
 import com.arquitectura.mensajeria.Respuesta;

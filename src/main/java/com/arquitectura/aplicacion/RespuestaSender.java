@@ -1,7 +1,7 @@
-package com.arquitectura;
+package com.arquitectura.aplicacion;
 
-import com.arquitectura.transporte.PaqueteDatos;
-import com.arquitectura.transporte.ProtocoloTransporte;
+import com.arquitectura.comun.dto.PaqueteDatos;
+import com.arquitectura.infraestructura.transporte.ProtocoloTransporte;
 
 import java.io.BufferedWriter;
 import java.io.IOException;

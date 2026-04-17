@@ -1,4 +1,4 @@
-package com.arquitectura.transporte;
+package com.arquitectura.comun.dto;
 
 import java.net.Socket;
 

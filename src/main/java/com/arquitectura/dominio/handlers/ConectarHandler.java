@@ -1,4 +1,4 @@
-package com.arquitectura.handlers;
+package com.arquitectura.dominio.handlers;
 
 import com.arquitectura.mensajeria.Mensaje;
 import com.arquitectura.mensajeria.Metadata;
@@ -7,7 +7,7 @@ import com.arquitectura.mensajeria.enums.Accion;
 import com.arquitectura.mensajeria.enums.Estado;
 import com.arquitectura.mensajeria.enums.TipoMensaje;
 import com.arquitectura.mensajeria.payload.PayloadConectar;
-import com.arquitectura.router.Handler;
+import com.arquitectura.aplicacion.router.Handler;
 
 import java.time.LocalDateTime;
 import java.util.UUID;

@@ -1,4 +1,4 @@
-package com.arquitectura.transporte;
+package com.arquitectura.infraestructura.transporte;
 
 public class ProtocoloTransporteFactory {
 

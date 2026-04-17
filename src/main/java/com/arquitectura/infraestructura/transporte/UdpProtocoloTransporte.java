@@ -1,4 +1,6 @@
-package com.arquitectura.transporte;
+package com.arquitectura.infraestructura.transporte;
+
+import com.arquitectura.comun.dto.PaqueteDatos;
 
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
