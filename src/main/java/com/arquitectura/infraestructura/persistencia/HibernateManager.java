@@ -3,6 +3,7 @@ package com.arquitectura.infraestructura.persistencia;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import jakarta.persistence.Persistence;
+import jakarta.persistence.Query;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -30,7 +31,15 @@ public final class HibernateManager {
         config.put("hibernate.format_sql", properties.getProperty("hibernate.format_sql", "false"));
         config.put("hibernate.dialect", "org.hibernate.dialect.MySQLDialect");
 
-        entityManagerFactory = Persistence.createEntityManagerFactory("mensajeriaPU", config);
+        try {
+            entityManagerFactory = Persistence.createEntityManagerFactory("mensajeriaPU", config);
+            validarConexion();
+        } catch (Exception e) {
+            throw new IllegalStateException(
+                    "No fue posible inicializar Hibernate/MySQL. Verifica mysql.url, mysql.user, mysql.password y que MySQL este disponible.",
+                    e
+            );
+        }
     }
 
     public static EntityManager crearEntityManager() {
@@ -45,6 +54,7 @@ public final class HibernateManager {
         if (entityManagerFactory != null && entityManagerFactory.isOpen()) {
             entityManagerFactory.close();
         }
+        entityManagerFactory = null;
     }
 
     private static String obtenerRequerida(Properties properties, String key) {
@@ -54,5 +64,15 @@ public final class HibernateManager {
         }
 
         return valor;
+    }
+
+    private static void validarConexion() {
+        EntityManager entityManager = entityManagerFactory.createEntityManager();
+        try {
+            Query query = entityManager.createNativeQuery("SELECT 1");
+            query.getSingleResult();
+        } finally {
+            entityManager.close();
+        }
     }
 }
