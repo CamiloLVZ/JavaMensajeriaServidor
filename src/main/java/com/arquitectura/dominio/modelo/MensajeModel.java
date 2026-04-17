@@ -2,8 +2,6 @@ package com.arquitectura.dominio.modelo;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
@@ -14,11 +12,8 @@ import java.time.LocalDateTime;
 public class MensajeModel {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    @Column(name = "mensaje_id", nullable = false, length = 100)
-    private String mensajeId;
+    @Column(nullable = false, length = 36, updatable = false)
+    private String id;
 
     @Column(nullable = false, length = 255)
     private String autor;
@@ -38,16 +33,12 @@ public class MensajeModel {
     @Column(name = "fecha_envio", nullable = false)
     private LocalDateTime fechaEnvio;
 
-    public Long getId() {
+    public String getId() {
         return id;
     }
 
-    public String getMensajeId() {
-        return mensajeId;
-    }
-
-    public void setMensajeId(String mensajeId) {
-        this.mensajeId = mensajeId;
+    public void setId(String id) {
+        this.id = id;
     }
 
     public String getAutor() {

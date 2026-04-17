@@ -15,7 +15,7 @@ public class JpaArchivoRecibidoRepository implements ArchivoRecibidoRepository {
                         long tamano, LocalDateTime fechaRecepcion) {
 
         ArchivoRecibidoModel entity = new ArchivoRecibidoModel();
-        entity.setMensajeId(mensajeId);
+        entity.setId(mensajeId);
         entity.setRemitente(remitente);
         entity.setIpRemitente(ipRemitente);
         entity.setNombreArchivo(nombreArchivo);

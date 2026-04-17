@@ -13,7 +13,7 @@ public class JpaMensajeRepository implements MensajeRepository {
     public void guardar(String mensajeId, String autor, String ipRemitente, String contenido,
                         String hashSha256, String contenidoCifrado, LocalDateTime fechaEnvio) {
         MensajeModel entity = new MensajeModel();
-        entity.setMensajeId(mensajeId);
+        entity.setId(mensajeId);
         entity.setAutor(autor);
         entity.setIpRemitente(ipRemitente);
         entity.setContenido(contenido);

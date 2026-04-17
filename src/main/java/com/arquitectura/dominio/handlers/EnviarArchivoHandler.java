@@ -131,7 +131,12 @@ public class EnviarArchivoHandler implements Handler<PayloadEnviarArchivo> {
 
     private String resolverMensajeId(Mensaje<PayloadEnviarArchivo> mensaje) {
         if (mensaje.getMetadata() != null && mensaje.getMetadata().getIdMensaje() != null) {
-            return mensaje.getMetadata().getIdMensaje();
+            String idMensaje = mensaje.getMetadata().getIdMensaje();
+            try {
+                return UUID.fromString(idMensaje).toString();
+            } catch (IllegalArgumentException ignored) {
+                LOGGER.warning(() -> "idMensaje recibido no es UUID valido, se generara uno nuevo");
+            }
         }
 
         return UUID.randomUUID().toString();
