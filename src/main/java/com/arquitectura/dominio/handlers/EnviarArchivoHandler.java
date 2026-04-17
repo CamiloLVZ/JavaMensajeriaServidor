@@ -19,6 +19,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.Base64;
+import java.util.Locale;
 import java.util.UUID;
 import java.util.logging.Logger;
 
@@ -42,12 +43,13 @@ public class EnviarArchivoHandler implements Handler<PayloadEnviarArchivo> {
 
         try {
             Path rutaArchivo = guardarArchivo(payload, contenidoArchivo);
+            String nombreFinalArchivo = rutaArchivo.getFileName().toString();
             archivoRecibidoRepository.guardar(
                     mensajeId,
                     remitente,
                     ipRemitente,
-                    payload.getNombre(),
-                    payload.getExtension(),
+                    extraerNombreBase(nombreFinalArchivo),
+                    extraerExtension(nombreFinalArchivo),
                     rutaArchivo.toAbsolutePath().toString(),
                     hashSha256,
                     contenidoCifrado,
@@ -55,10 +57,10 @@ public class EnviarArchivoHandler implements Handler<PayloadEnviarArchivo> {
                     fechaRecepcion
             );
 
-            LOGGER.info(() -> "Archivo recibido: " + payload.getNombre() + " desde " + remitente + " (" + ipRemitente + ") | Hash: " + hashSha256);
+            LOGGER.info(() -> "Archivo recibido: " + nombreFinalArchivo + " desde " + remitente + " (" + ipRemitente + ") | Hash: " + hashSha256);
             System.out.println("[SERVIDOR] Archivo recibido de " + remitente + " (" + ipRemitente + "): " + rutaArchivo.toAbsolutePath());
 
-            return crearRespuestaExitosa(payload.getNombre(), rutaArchivo);
+            return crearRespuestaExitosa(nombreFinalArchivo, rutaArchivo);
         } catch (IOException e) {
             LOGGER.severe(() -> "No fue posible guardar el archivo " + payload.getNombre() + ": " + e.getMessage());
             throw new IllegalStateException("No fue posible guardar el archivo recibido", e);
@@ -73,8 +75,8 @@ public class EnviarArchivoHandler implements Handler<PayloadEnviarArchivo> {
     private Path guardarArchivo(PayloadEnviarArchivo payload, byte[] contenidoArchivo) throws IOException {
         Files.createDirectories(DIRECTORIO_DESTINO);
 
-        String nombreArchivo = construirNombreArchivo(payload);
-        Path rutaArchivo = DIRECTORIO_DESTINO.resolve(nombreArchivo);
+        String nombreArchivoNormalizado = construirNombreArchivo(payload);
+        Path rutaArchivo = resolverRutaSinColision(nombreArchivoNormalizado);
 
         Files.write(rutaArchivo, contenidoArchivo);
         return rutaArchivo;
@@ -89,6 +91,46 @@ public class EnviarArchivoHandler implements Handler<PayloadEnviarArchivo> {
         }
 
         return nombre + "." + extension;
+    }
+
+    private Path resolverRutaSinColision(String nombreArchivo) {
+        Path rutaInicial = DIRECTORIO_DESTINO.resolve(nombreArchivo);
+        if (!Files.exists(rutaInicial)) {
+            return rutaInicial;
+        }
+
+        String extension = extraerExtension(nombreArchivo);
+        String nombreBase = extraerNombreBase(nombreArchivo);
+
+        int contador = 1;
+        Path rutaCandidata = rutaInicial;
+        while (Files.exists(rutaCandidata)) {
+            String nombreConSufijo = extension.isBlank()
+                    ? nombreBase + " (" + contador + ")"
+                    : nombreBase + " (" + contador + ")." + extension;
+            rutaCandidata = DIRECTORIO_DESTINO.resolve(nombreConSufijo);
+            contador++;
+        }
+
+        return rutaCandidata;
+    }
+
+    private String extraerNombreBase(String nombreArchivoCompleto) {
+        int ultimoPunto = nombreArchivoCompleto.lastIndexOf('.');
+        if (ultimoPunto <= 0) {
+            return nombreArchivoCompleto;
+        }
+
+        return nombreArchivoCompleto.substring(0, ultimoPunto);
+    }
+
+    private String extraerExtension(String nombreArchivoCompleto) {
+        int ultimoPunto = nombreArchivoCompleto.lastIndexOf('.');
+        if (ultimoPunto <= 0 || ultimoPunto == nombreArchivoCompleto.length() - 1) {
+            return "";
+        }
+
+        return nombreArchivoCompleto.substring(ultimoPunto + 1).toLowerCase(Locale.ROOT);
     }
 
     private byte[] obtenerContenido(PayloadEnviarArchivo payload) {
