@@ -1,6 +1,10 @@
 package com.arquitectura.dominio.handlers;
 
+import com.arquitectura.aplicacion.ContextoSolicitud;
 import com.arquitectura.aplicacion.router.Handler;
+import com.arquitectura.dominio.repositorios.ArchivoRecibidoRepository;
+import com.arquitectura.dominio.repositorios.JpaArchivoRecibidoRepository;
+import com.arquitectura.infraestructura.seguridad.CryptoUtil;
 import com.arquitectura.mensajeria.Mensaje;
 import com.arquitectura.mensajeria.Metadata;
 import com.arquitectura.mensajeria.Respuesta;
@@ -22,18 +26,37 @@ public class EnviarArchivoHandler implements Handler<PayloadEnviarArchivo> {
 
     private static final Logger LOGGER = Logger.getLogger(EnviarArchivoHandler.class.getName());
     private static final Path DIRECTORIO_DESTINO = Path.of("archivos-recibidos");
+    private final ArchivoRecibidoRepository archivoRecibidoRepository = new JpaArchivoRecibidoRepository();
 
     @Override
     public Respuesta<?> handle(Mensaje<PayloadEnviarArchivo> mensaje) {
 
         PayloadEnviarArchivo payload = mensaje.getPayload();
         String remitente = resolverRemitente(mensaje);
+        String ipRemitente = ContextoSolicitud.obtenerIpRemitente();
+        String mensajeId = resolverMensajeId(mensaje);
+        LocalDateTime fechaRecepcion = resolverFecha(mensaje);
+        byte[] contenidoArchivo = obtenerContenido(payload);
+        String hashSha256 = CryptoUtil.sha256Base64(contenidoArchivo);
+        String contenidoCifrado = CryptoUtil.aesEncryptBase64(contenidoArchivo);
 
         try {
-            Path rutaArchivo = guardarArchivo(payload);
+            Path rutaArchivo = guardarArchivo(payload, contenidoArchivo);
+            archivoRecibidoRepository.guardar(
+                    mensajeId,
+                    remitente,
+                    ipRemitente,
+                    payload.getNombre(),
+                    payload.getExtension(),
+                    rutaArchivo.toAbsolutePath().toString(),
+                    hashSha256,
+                    contenidoCifrado,
+                    payload.getTamano(),
+                    fechaRecepcion
+            );
 
-            LOGGER.info(() -> "Archivo recibido: " + payload.getNombre() + " desde " + remitente);
-            System.out.println("[SERVIDOR] Archivo recibido de " + remitente + ": " + rutaArchivo.toAbsolutePath());
+            LOGGER.info(() -> "Archivo recibido: " + payload.getNombre() + " desde " + remitente + " (" + ipRemitente + ") | Hash: " + hashSha256);
+            System.out.println("[SERVIDOR] Archivo recibido de " + remitente + " (" + ipRemitente + "): " + rutaArchivo.toAbsolutePath());
 
             return crearRespuestaExitosa(payload.getNombre(), rutaArchivo);
         } catch (IOException e) {
@@ -47,13 +70,13 @@ public class EnviarArchivoHandler implements Handler<PayloadEnviarArchivo> {
         return PayloadEnviarArchivo.class;
     }
 
-    private Path guardarArchivo(PayloadEnviarArchivo payload) throws IOException {
+    private Path guardarArchivo(PayloadEnviarArchivo payload, byte[] contenidoArchivo) throws IOException {
         Files.createDirectories(DIRECTORIO_DESTINO);
 
         String nombreArchivo = construirNombreArchivo(payload);
         Path rutaArchivo = DIRECTORIO_DESTINO.resolve(nombreArchivo);
 
-        Files.write(rutaArchivo, obtenerContenido(payload));
+        Files.write(rutaArchivo, contenidoArchivo);
         return rutaArchivo;
     }
 
@@ -104,5 +127,21 @@ public class EnviarArchivoHandler implements Handler<PayloadEnviarArchivo> {
         }
 
         return "desconocido";
+    }
+
+    private String resolverMensajeId(Mensaje<PayloadEnviarArchivo> mensaje) {
+        if (mensaje.getMetadata() != null && mensaje.getMetadata().getIdMensaje() != null) {
+            return mensaje.getMetadata().getIdMensaje();
+        }
+
+        return UUID.randomUUID().toString();
+    }
+
+    private LocalDateTime resolverFecha(Mensaje<PayloadEnviarArchivo> mensaje) {
+        if (mensaje.getMetadata() != null && mensaje.getMetadata().getTimestamp() != null) {
+            return mensaje.getMetadata().getTimestamp();
+        }
+
+        return LocalDateTime.now();
     }
 }

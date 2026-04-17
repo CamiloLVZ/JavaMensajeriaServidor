@@ -6,6 +6,8 @@ import com.arquitectura.infraestructura.logs.LogConfig;
 import com.arquitectura.aplicacion.router.MensajeRouter;
 import com.arquitectura.aplicacion.router.MensajeRouterFactory;
 import com.arquitectura.comun.dto.PaqueteDatos;
+import com.arquitectura.infraestructura.persistencia.ConexionMySql;
+import com.arquitectura.infraestructura.seguridad.CryptoConfig;
 import com.arquitectura.infraestructura.transporte.ProtocoloTransporte;
 import com.arquitectura.infraestructura.transporte.ProtocoloTransporteFactory;
 
@@ -31,6 +33,11 @@ public class Main {
             String protocolo = properties.getProperty("transfer-protocol");
             int puerto = Integer.parseInt(properties.getProperty("server.port"));
 
+            CryptoConfig.configurar(properties);
+            ConexionMySql.configurar(properties);
+            LogConfig.configureDatabaseLogging();
+            Runtime.getRuntime().addShutdownHook(new Thread(ConexionMySql::cerrar));
+
             ProtocoloTransporte transporte = ProtocoloTransporteFactory.crear(protocolo);
 
             LOGGER.info(() -> "Servidor iniciado con protocolo: " + transporte.getNombre());
@@ -45,7 +52,7 @@ public class Main {
 
                 PaqueteDatos paquete = transporte.recibir();
 
-                String respuesta = procesador.procesar(paquete.getData());
+                String respuesta = procesador.procesar(paquete);
 
                 sender.enviar(paquete, respuesta, transporte);
             }

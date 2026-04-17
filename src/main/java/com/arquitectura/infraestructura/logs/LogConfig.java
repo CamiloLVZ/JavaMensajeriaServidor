@@ -10,6 +10,7 @@ import java.util.logging.Logger;
 public final class LogConfig {
 
     private static volatile boolean configured = false;
+    private static volatile boolean databaseHandlerConfigured = false;
 
     private LogConfig() {
     }
@@ -47,6 +48,24 @@ public final class LogConfig {
             rootLogger.addHandler(consoleHandler);
             rootLogger.setLevel(Level.INFO);
             configured = true;
+        }
+    }
+
+    public static void configureDatabaseLogging() {
+        if (databaseHandlerConfigured) {
+            return;
+        }
+
+        synchronized (LogConfig.class) {
+            if (databaseHandlerConfigured) {
+                return;
+            }
+
+            Logger rootLogger = Logger.getLogger("");
+            DatabaseLogHandler databaseLogHandler = new DatabaseLogHandler();
+            databaseLogHandler.setLevel(Level.ALL);
+            rootLogger.addHandler(databaseLogHandler);
+            databaseHandlerConfigured = true;
         }
     }
 }

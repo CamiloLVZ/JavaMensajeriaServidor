@@ -1,6 +1,10 @@
 package com.arquitectura.dominio.handlers;
 
+import com.arquitectura.aplicacion.ContextoSolicitud;
 import com.arquitectura.aplicacion.router.Handler;
+import com.arquitectura.dominio.repositorios.MensajeRepository;
+import com.arquitectura.dominio.repositorios.JpaMensajeRepository;
+import com.arquitectura.infraestructura.seguridad.CryptoUtil;
 import com.arquitectura.mensajeria.Mensaje;
 import com.arquitectura.mensajeria.Metadata;
 import com.arquitectura.mensajeria.Respuesta;
@@ -9,6 +13,7 @@ import com.arquitectura.mensajeria.enums.Estado;
 import com.arquitectura.mensajeria.enums.TipoMensaje;
 import com.arquitectura.mensajeria.payload.PayloadEnviarMensaje;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.UUID;
 import java.util.logging.Logger;
@@ -16,17 +21,27 @@ import java.util.logging.Logger;
 public class MensajeTextoHandler implements Handler<PayloadEnviarMensaje> {
 
     private static final Logger LOGGER = Logger.getLogger(MensajeTextoHandler.class.getName());
+    private final MensajeRepository mensajeRepository = new JpaMensajeRepository();
 
     @Override
     public Respuesta<?> handle(Mensaje<PayloadEnviarMensaje> mensaje) {
 
         PayloadEnviarMensaje payload = mensaje.getPayload();
         String remitente = resolverRemitente(mensaje, payload);
+        String ipRemitente = ContextoSolicitud.obtenerIpRemitente();
         String texto = payload.getContenido();
+        LocalDateTime fechaEnvio = resolverFecha(mensaje);
+        String mensajeId = resolverMensajeId(mensaje);
+        byte[] contenidoBytes = texto.getBytes(StandardCharsets.UTF_8);
+        String hashSha256 = CryptoUtil.sha256Base64(contenidoBytes);
+        String contenidoCifrado = CryptoUtil.aesEncryptBase64(contenidoBytes);
 
-        LOGGER.info(() -> "Mensaje de texto recibido | Remitente: %s | Contenido: %s ".formatted(remitente, texto));
+        mensajeRepository.guardar(mensajeId, remitente, ipRemitente, texto, hashSha256, contenidoCifrado, fechaEnvio);
 
-        System.out.println("[SERVIDOR] Mensaje recibido de " + remitente + ": " + texto);
+        LOGGER.info(() -> "Mensaje de texto recibido | Remitente: %s | IP: %s | Hash: %s "
+                .formatted(remitente, ipRemitente, hashSha256));
+
+        System.out.println("[SERVIDOR] Mensaje recibido de " + remitente + " (" + ipRemitente + "): " + texto);
 
         Mensaje<String> mensajeRespuesta = new Mensaje<>();
         mensajeRespuesta.setTipo(TipoMensaje.RESPONSE);
@@ -64,4 +79,21 @@ public class MensajeTextoHandler implements Handler<PayloadEnviarMensaje> {
 
         return "desconocido";
     }
+
+    private LocalDateTime resolverFecha(Mensaje<PayloadEnviarMensaje> mensaje) {
+        if (mensaje.getMetadata() != null && mensaje.getMetadata().getTimestamp() != null) {
+            return mensaje.getMetadata().getTimestamp();
+        }
+
+        return LocalDateTime.now();
+    }
+
+    private String resolverMensajeId(Mensaje<PayloadEnviarMensaje> mensaje) {
+        if (mensaje.getMetadata() != null && mensaje.getMetadata().getIdMensaje() != null) {
+            return mensaje.getMetadata().getIdMensaje();
+        }
+
+        return UUID.randomUUID().toString();
+    }
+
 }
