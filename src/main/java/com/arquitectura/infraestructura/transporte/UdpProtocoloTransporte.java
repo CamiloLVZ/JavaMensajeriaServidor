@@ -9,7 +9,6 @@ import java.io.DataOutputStream;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
-import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.logging.Logger;
 
@@ -182,8 +181,7 @@ public class UdpProtocoloTransporte implements ProtocoloTransporte {
                     socket.setSoTimeout((int) ACK_TIMEOUT_MS);
                     socket.receive(ackPacket);
 
-                    String ackStr = new String(bufferAck, 0, ackPacket.getLength(), StandardCharsets.UTF_8);
-                    if (ackStr.contains(frame.getTransferId()) && ackStr.contains(String.valueOf(frame.getIndexChunk()))) {
+                    if (esAckValido(bufferAck, ackPacket.getLength(), frame.getTransferId(), frame.getIndexChunk())) {
                         ackRecibido = true;
                         LOGGER.finer(() -> "ACK recibido para chunk " + frame.getIndexChunk());
                     }
@@ -201,6 +199,19 @@ public class UdpProtocoloTransporte implements ProtocoloTransporte {
 
         } catch (Exception e) {
             throw new RuntimeException("Error enviando frame de transferencia por UDP", e);
+        }
+    }
+
+    private boolean esAckValido(byte[] ackData, int length, String transferIdEsperado, long chunkEsperado) {
+        try (DataInputStream dis = new DataInputStream(new java.io.ByteArrayInputStream(ackData, 0, length))) {
+            String tipo = dis.readUTF();
+            String transferId = dis.readUTF();
+            long chunk = dis.readLong();
+            return "ACK".equals(tipo) &&
+                   transferIdEsperado.equals(transferId) &&
+                   chunkEsperado == chunk;
+        } catch (Exception e) {
+            return false;
         }
     }
 
