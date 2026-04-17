@@ -1,4 +1,4 @@
-package com.arquitectura.ejemplosClientes;
+package com.arquitectura.ejemplosClientes.tcp;
 
 import com.arquitectura.infraestructura.serializacion.JsonUtil;
 import com.arquitectura.mensajeria.Mensaje;
@@ -7,19 +7,15 @@ import com.arquitectura.mensajeria.Respuesta;
 import com.arquitectura.mensajeria.enums.Accion;
 import com.arquitectura.mensajeria.enums.Protocolo;
 import com.arquitectura.mensajeria.enums.TipoMensaje;
+import com.arquitectura.mensajeria.payload.PayloadConectar;
 
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
-import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
+import java.io.*;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
-import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.UUID;
 
-public class ClienteTextoTCPSimulado {
+public class ClienteConexionTCPSimulado {
 
     public static void main(String[] args) {
 
@@ -28,36 +24,46 @@ public class ClienteTextoTCPSimulado {
 
         try (Socket socket = new Socket(host, puerto)) {
 
+            System.out.println("[CLIENTE] Conectado a " + host + ":" + puerto);
+
             BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8));
             BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
 
-            Mensaje<Map<String, String>> mensaje = new Mensaje<>();
+            Mensaje<PayloadConectar> mensaje = new Mensaje<>();
             mensaje.setTipo(TipoMensaje.REQUEST);
-            mensaje.setAccion(Accion.ENVIAR_MENSAJE);
+            mensaje.setAccion(Accion.CONECTAR);
 
-            Metadata metadata = new Metadata();
-            metadata.setIdMensaje(UUID.randomUUID().toString());
-            metadata.setClientId("cliente-a");
-            metadata.setTimestamp(LocalDateTime.now());
-            metadata.setProtocolo(Protocolo.TCP);
-            mensaje.setMetadata(metadata);
+            Metadata meta = new Metadata();
+            meta.setIdMensaje(UUID.randomUUID().toString());
+            meta.setTimestamp(LocalDateTime.now());
+            meta.setProtocolo(Protocolo.TCP);
 
-            Map<String, String> payload = new LinkedHashMap<>();
-            payload.put("autor", "cliente-a");
-            payload.put("contenido", "Hola servidor, este es un mensaje publicado.");
+            mensaje.setMetadata(meta);
+
+            PayloadConectar payload = new PayloadConectar();
+            payload.setUsername("juan");
+
             mensaje.setPayload(payload);
 
             String json = JsonUtil.toJson(mensaje);
+
+            System.out.println("[CLIENTE] Enviando:");
+            System.out.println(json);
+
             writer.write(json);
             writer.newLine();
             writer.flush();
 
+            System.out.println("[CLIENTE] Esperando respuesta...");
+
             String jsonRespuesta = reader.readLine();
+
+            System.out.println("[CLIENTE] Respuesta recibida:");
+            System.out.println(jsonRespuesta);
+
             Respuesta<?> respuesta = JsonUtil.fromJson(jsonRespuesta, Respuesta.class);
 
-            System.out.println(json);
-            System.out.println(jsonRespuesta);
-            System.out.println("Estado: " + respuesta.getEstado());
+            System.out.println("[CLIENTE] Estado: " + respuesta.getEstado());
 
         } catch (Exception e) {
             e.printStackTrace();

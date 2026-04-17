@@ -1,4 +1,4 @@
-package com.arquitectura.ejemplosClientes;
+package com.arquitectura.ejemplosClientes.udp;
 
 import com.arquitectura.infraestructura.serializacion.JsonUtil;
 import com.arquitectura.mensajeria.Mensaje;
@@ -16,7 +16,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
-public class ClienteUDPSimulado {
+public class ClienteConexionUDPSimulado {
     public static void main(String[] args) {
 
         String host = "localhost";

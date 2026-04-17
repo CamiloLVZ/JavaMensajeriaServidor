@@ -1,4 +1,4 @@
-package com.arquitectura.ejemplosClientes;
+package com.arquitectura.ejemplosClientes.tcp;
 
 import com.arquitectura.infraestructura.serializacion.JsonUtil;
 import com.arquitectura.mensajeria.Mensaje;
@@ -8,23 +8,28 @@ import com.arquitectura.mensajeria.enums.Accion;
 import com.arquitectura.mensajeria.enums.Protocolo;
 import com.arquitectura.mensajeria.enums.TipoMensaje;
 
-import java.net.DatagramPacket;
-import java.net.DatagramSocket;
-import java.net.InetAddress;
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 
-public class ClienteTextoUDPSimulado {
+public class ClienteTextoTCPSimulado {
 
     public static void main(String[] args) {
 
         String host = "localhost";
-        int puertoServidor = 8080;
+        int puerto = 8080;
 
-        try (DatagramSocket socket = new DatagramSocket()) {
+        try (Socket socket = new Socket(host, puerto)) {
+
+            BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8));
+            BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
 
             Mensaje<Map<String, String>> mensaje = new Mensaje<>();
             mensaje.setTipo(TipoMensaje.REQUEST);
@@ -32,34 +37,22 @@ public class ClienteTextoUDPSimulado {
 
             Metadata metadata = new Metadata();
             metadata.setIdMensaje(UUID.randomUUID().toString());
-            metadata.setClientId("cliente-udp");
+            metadata.setClientId("cliente-a");
             metadata.setTimestamp(LocalDateTime.now());
-            metadata.setProtocolo(Protocolo.UDP);
+            metadata.setProtocolo(Protocolo.TCP);
             mensaje.setMetadata(metadata);
 
             Map<String, String> payload = new LinkedHashMap<>();
-            payload.put("autor", "cliente-udp");
-            payload.put("contenido", "Hola servidor, este mensaje fue enviado por UDP.");
+            payload.put("autor", "cliente-a");
+            payload.put("contenido", "Hola servidor, este es un mensaje publicado.");
             mensaje.setPayload(payload);
 
             String json = JsonUtil.toJson(mensaje);
-            byte[] data = json.getBytes(StandardCharsets.UTF_8);
+            writer.write(json);
+            writer.newLine();
+            writer.flush();
 
-            InetAddress address = InetAddress.getByName(host);
-            DatagramPacket paqueteEnvio = new DatagramPacket(data, data.length, address, puertoServidor);
-            socket.send(paqueteEnvio);
-
-            byte[] buffer = new byte[65535];
-            DatagramPacket paqueteRespuesta = new DatagramPacket(buffer, buffer.length);
-            socket.receive(paqueteRespuesta);
-
-            String jsonRespuesta = new String(
-                    paqueteRespuesta.getData(),
-                    0,
-                    paqueteRespuesta.getLength(),
-                    StandardCharsets.UTF_8
-            );
-
+            String jsonRespuesta = reader.readLine();
             Respuesta<?> respuesta = JsonUtil.fromJson(jsonRespuesta, Respuesta.class);
 
             System.out.println(json);
