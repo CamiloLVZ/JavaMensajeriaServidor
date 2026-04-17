@@ -65,6 +65,9 @@ public class Main {
             while (true) {
                 try {
                     PaqueteDatos paquete = transporte.recibir();
+                    if (paquete == null || paquete.getData() == null || paquete.getData().length == 0) {
+                        continue;
+                    }
                     String respuesta = procesador.procesar(paquete);
                     sender.enviar(paquete, respuesta, transporte);
                 } catch (Exception e) {

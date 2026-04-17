@@ -23,7 +23,8 @@ import java.util.logging.Logger;
 public class GestorTransferenciasStreaming {
 
     private static final Logger LOGGER = Logger.getLogger(GestorTransferenciasStreaming.class.getName());
-    private static final Path DIRECTORIO_TEMPORAL = Path.of("transferencias-temporales");
+    private static final Path DIRECTORIO_BASE_RECIBIDOS = Path.of("archivos-recibidos");
+    private static final Path DIRECTORIO_TEMPORAL = DIRECTORIO_BASE_RECIBIDOS.resolve("transferencias-temporales");
     private static final long TIMEOUT_TRANSFERENCIA_MS = 3600000; // 1 hora
     private static final int MAX_TRANSFERENCIAS_CONCURRENTES = 100;
 
@@ -35,7 +36,9 @@ public class GestorTransferenciasStreaming {
 
     public GestorTransferenciasStreaming() {
         try {
+            Files.createDirectories(DIRECTORIO_BASE_RECIBIDOS);
             Files.createDirectories(DIRECTORIO_TEMPORAL);
+            LOGGER.info("Directorio de archivos recibidos: " + DIRECTORIO_BASE_RECIBIDOS.toAbsolutePath());
             LOGGER.info("Directorio de transferencias temporales creado: " + DIRECTORIO_TEMPORAL.toAbsolutePath());
         } catch (IOException e) {
             LOGGER.warning("No se pudo crear directorio temporal: " + e.getMessage());
@@ -70,8 +73,8 @@ public class GestorTransferenciasStreaming {
             // Crear archivo temporal
             Files.createFile(rutaTemporal);
 
-            // Guardar en DB
-            repository.guardar(transferencia);
+            // Guardar en DB (sin romper flujo si BD falla)
+            guardarEstadoSeguro(transferencia, "guardando transferencia");
 
             // Guardar en cache
             transferenciasActivas.put(transferId, transferencia);
@@ -101,8 +104,11 @@ public class GestorTransferenciasStreaming {
         );
 
         if (transferencia == null) {
-            LOGGER.warning(() -> "Transferencia no encontrada: " + transferId);
-            return false;
+            transferencia = crearTransferenciaDesdePrimerChunk(frame);
+            if (transferencia == null) {
+                LOGGER.warning(() -> "Transferencia no encontrada y no se pudo inicializar: " + transferId);
+                return false;
+            }
         }
 
         // Validar que no sea una transferencia antigua (timeout)
@@ -155,7 +161,7 @@ public class GestorTransferenciasStreaming {
             }
 
             // Actualizar en BD
-            repository.actualizar(transferencia);
+            actualizarEstadoSeguro(transferencia, "actualizando progreso");
 
             if (transferencia.getChunksRecibidos() % 100 == 0) {
                 long porcentaje = (transferencia.getChunksRecibidos() * 100) / transferencia.getTotalChunks();
@@ -168,7 +174,7 @@ public class GestorTransferenciasStreaming {
         } catch (Exception e) {
             LOGGER.severe(() -> "Error procesando chunk " + frame.getIndexChunk() + " de transferencia " + transferId + ": " + e.getMessage());
             transferencia.setEstado("FAILED");
-            repository.actualizar(transferencia);
+            actualizarEstadoSeguro(transferencia, "marcando transferencia fallida");
             return false;
         }
     }
@@ -190,14 +196,14 @@ public class GestorTransferenciasStreaming {
 
             // Mover archivo temporal a ubicación final
             Path rutaTemporal = Path.of(transferencia.getRutaTemporal());
-            Path rutaFinal = Path.of("archivos-recibidos").resolve(construirNombreFinal(transferencia));
+            Path rutaFinal = DIRECTORIO_BASE_RECIBIDOS.resolve(construirNombreFinal(transferencia));
 
             Files.createDirectories(rutaFinal.getParent());
             Files.move(rutaTemporal, rutaFinal);
             transferencia.setRutaTemporal(rutaFinal.toAbsolutePath().toString());
 
             // Actualizar en BD
-            repository.actualizar(transferencia);
+            actualizarEstadoSeguro(transferencia, "finalizando transferencia");
 
             // Limpiar cache
             transferenciasActivas.remove(transferencia.getTransferId());
@@ -210,7 +216,7 @@ public class GestorTransferenciasStreaming {
         } catch (Exception e) {
             LOGGER.severe(() -> "Error finalizando transferencia " + transferencia.getTransferId() + ": " + e.getMessage());
             transferencia.setEstado("FAILED");
-            repository.actualizar(transferencia);
+            actualizarEstadoSeguro(transferencia, "marcando error al finalizar");
         }
     }
 
@@ -224,7 +230,7 @@ public class GestorTransferenciasStreaming {
                 TransferenciaStreamingModel transferencia = opt.get();
                 transferencia.setEstado("CANCELLED");
                 transferencia.setFechaFinalizacion(LocalDateTime.now());
-                repository.actualizar(transferencia);
+                actualizarEstadoSeguro(transferencia, "cancelando transferencia");
 
                 // Limpiar archivo temporal
                 Path rutaTemporal = Path.of(transferencia.getRutaTemporal());
@@ -284,10 +290,10 @@ public class GestorTransferenciasStreaming {
             String base = nombre.substring(0, ultimoPunto);
             String extension = nombre.substring(ultimoPunto + 1);
 
-            Path rutaFinal = Path.of("archivos-recibidos").resolve(nombre);
+            Path rutaFinal = DIRECTORIO_BASE_RECIBIDOS.resolve(nombre);
             int contador = 1;
             while (Files.exists(rutaFinal)) {
-                rutaFinal = Path.of("archivos-recibidos").resolve(
+                rutaFinal = DIRECTORIO_BASE_RECIBIDOS.resolve(
                     base + " (" + contador + ")." + extension
                 );
                 contador++;
@@ -314,5 +320,55 @@ public class GestorTransferenciasStreaming {
 
         return stats;
     }
-}
 
+    private TransferenciaStreamingModel crearTransferenciaDesdePrimerChunk(FrameTransferencia frame) {
+        if (frame.getIndexChunk() != 0) {
+            return null;
+        }
+
+        try {
+            String transferId = frame.getTransferId();
+            String nombreArchivo = "udp_" + transferId + ".bin";
+            TransferenciaStreamingModel transferencia = new TransferenciaStreamingModel(
+                transferId,
+                nombreArchivo,
+                frame.getTamanoTotal(),
+                "cliente-udp",
+                "desconocida",
+                frame.getTotalChunks(),
+                "UDP"
+            );
+
+            Path rutaTemporal = DIRECTORIO_TEMPORAL.resolve(transferId + ".tmp");
+            transferencia.setRutaTemporal(rutaTemporal.toAbsolutePath().toString());
+            Files.createDirectories(DIRECTORIO_TEMPORAL);
+            if (!Files.exists(rutaTemporal)) {
+                Files.createFile(rutaTemporal);
+            }
+
+            transferenciasActivas.put(transferId, transferencia);
+            digestActivos.put(transferId, MessageDigest.getInstance("SHA-256"));
+            guardarEstadoSeguro(transferencia, "guardando transferencia inicial");
+            return transferencia;
+        } catch (Exception e) {
+            LOGGER.warning(() -> "No se pudo inicializar transferencia UDP " + frame.getTransferId() + ": " + e.getMessage());
+            return null;
+        }
+    }
+
+    private void guardarEstadoSeguro(TransferenciaStreamingModel transferencia, String contexto) {
+        try {
+            repository.guardar(transferencia);
+        } catch (Exception e) {
+            LOGGER.warning(() -> "Error " + contexto + " en BD: " + e.getMessage());
+        }
+    }
+
+    private void actualizarEstadoSeguro(TransferenciaStreamingModel transferencia, String contexto) {
+        try {
+            repository.actualizar(transferencia);
+        } catch (Exception e) {
+            LOGGER.warning(() -> "Error " + contexto + " en BD: " + e.getMessage());
+        }
+    }
+}
