@@ -1,7 +1,6 @@
 package com.arquitectura.transporte;
 
 import java.io.BufferedReader;
-import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.ServerSocket;
@@ -74,5 +73,10 @@ public class TcpProtocoloTransporte implements ProtocoloTransporte {
         } catch (Exception e) {
             throw new RuntimeException("Error cerrando TCP", e);
         }
+    }
+
+    @Override
+    public String getNombre() {
+        return "TCP";
     }
 }

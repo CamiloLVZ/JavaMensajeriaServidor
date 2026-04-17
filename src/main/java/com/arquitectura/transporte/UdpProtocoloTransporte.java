@@ -65,4 +65,10 @@ public class UdpProtocoloTransporte implements ProtocoloTransporte {
             LOGGER.info("Transporte UDP detenido");
         }
     }
+
+    @Override
+    public String getNombre() {
+        return "UDP";
+    }
+
 }

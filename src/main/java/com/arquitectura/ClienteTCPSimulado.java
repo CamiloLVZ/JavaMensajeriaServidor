@@ -15,7 +15,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
-public class ClienteSimulado {
+public class ClienteTCPSimulado {
 
     public static void main(String[] args) {
 

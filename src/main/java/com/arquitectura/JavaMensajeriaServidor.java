@@ -6,14 +6,14 @@ import com.arquitectura.mensajeria.Mensaje;
 import com.arquitectura.mensajeria.Respuesta;
 import com.arquitectura.router.MensajeRouter;
 import com.arquitectura.router.MensajeRouterFactory;
+import com.arquitectura.transporte.PaqueteDatos;
+import com.arquitectura.transporte.ProtocoloTransporte;
+import com.arquitectura.transporte.ProtocoloTransporteFactory;
 
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
-import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
-import java.net.ServerSocket;
+import java.io.*;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.Properties;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -22,55 +22,84 @@ public class JavaMensajeriaServidor {
     private static final Logger LOGGER = Logger.getLogger(JavaMensajeriaServidor.class.getName());
 
     public static void main(String[] args) {
+
         LogConfig.configureRootLogger();
 
-        int puerto = 8080;
+        Properties properties = new Properties();
 
-        try (ServerSocket serverSocket = new ServerSocket(puerto)) {
-            LOGGER.info(() -> "Servidor escuchando en puerto " + puerto);
+        try (InputStream inputStream =
+                     JavaMensajeriaServidor.class
+                             .getClassLoader()
+                             .getResourceAsStream("application.properties")) {
+
+            properties.load(inputStream);
+
+            String protocolo = properties.getProperty("transfer-protocol");
+            int puerto = Integer.parseInt(properties.getProperty("server.port"));
+
+            ProtocoloTransporte transporte = ProtocoloTransporteFactory.crear(protocolo);
+
+            LOGGER.info(() -> "Servidor iniciado con protocolo: "
+                    + transporte.getNombre());
+
+            transporte.iniciar(puerto);
 
             MensajeRouter router = MensajeRouterFactory.crearRouter();
 
             while (true) {
-                LOGGER.info("Esperando cliente...");
 
-                try (Socket cliente = serverSocket.accept();
-                     BufferedReader reader = new BufferedReader(new InputStreamReader(cliente.getInputStream(), StandardCharsets.UTF_8));
-                     BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(cliente.getOutputStream(), StandardCharsets.UTF_8))) {
+                LOGGER.info("Esperando mensaje...");
 
-                    LOGGER.info(() -> "Cliente conectado desde " + cliente.getInetAddress().getHostAddress() + ":" + cliente.getPort());
+                PaqueteDatos paquete = transporte.recibir();
 
-                    String json = reader.readLine();
-                    if (json == null || json.isBlank()) {
-                        LOGGER.warning(() -> "Se recibio un mensaje vacio desde "
-                                + cliente.getInetAddress().getHostAddress() + ":" + cliente.getPort());
-                        continue;
-                    }
+                String json = new String(
+                        paquete.getData(),
+                        StandardCharsets.UTF_8
+                );
 
-                    LOGGER.info("JSON recibido del cliente");
-                    LOGGER.fine(() -> "Payload recibido: " + json);
+                LOGGER.info(() -> "Mensaje recibido");
 
-                    Mensaje<?> mensaje = JsonUtil.fromJson(json, Mensaje.class);
-                    LOGGER.info(() -> "Accion recibida: " + mensaje.getAccion());
+                Mensaje<?> mensaje =
+                        JsonUtil.fromJson(json, Mensaje.class);
 
-                    Respuesta<?> respuesta = router.responder(mensaje);
-                    String jsonRespuesta = JsonUtil.toJson(respuesta);
+                Respuesta<?> respuesta =
+                        router.responder(mensaje);
 
-                    LOGGER.info("Respuesta generada");
-                    LOGGER.fine(() -> "Payload respuesta: " + jsonRespuesta);
+                String jsonRespuesta =
+                        JsonUtil.toJson(respuesta);
+
+                // 🔥 DIFERENCIA CLAVE TCP vs UDP
+
+                if (paquete.getSocket() != null) {
+                    // 👉 TCP
+                    Socket socket = paquete.getSocket();
+
+                    BufferedWriter writer = new BufferedWriter(
+                            new OutputStreamWriter(socket.getOutputStream())
+                    );
 
                     writer.write(jsonRespuesta);
                     writer.newLine();
                     writer.flush();
 
-                    LOGGER.info(() -> "Respuesta enviada a "
-                            + cliente.getInetAddress().getHostAddress() + ":" + cliente.getPort());
-                } catch (Exception e) {
-                    LOGGER.log(Level.WARNING, "Error atendiendo cliente", e);
+                    socket.close();
+
+                    LOGGER.info("Respuesta enviada via TCP");
+
+                } else {
+                    // 👉 UDP
+                    transporte.enviar(
+                            jsonRespuesta.getBytes(StandardCharsets.UTF_8),
+                            paquete.getHostOrigen(),
+                            paquete.getPuertoOrigen()
+                    );
+
+                    LOGGER.info("Respuesta enviada via UDP");
                 }
             }
+
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Fallo fatal en el servidor", e);
+            LOGGER.log(Level.SEVERE, "Error en servidor", e);
         }
     }
 }

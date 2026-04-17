@@ -6,4 +6,5 @@ public interface ProtocoloTransporte {
     void enviar(byte[] data, String host, int port);
     PaqueteDatos recibir();
     void detener();
+    String getNombre();
 }
