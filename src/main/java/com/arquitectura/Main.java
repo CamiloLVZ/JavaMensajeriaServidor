@@ -10,10 +10,10 @@ import com.arquitectura.infraestructura.persistencia.ConexionMySql;
 import com.arquitectura.infraestructura.seguridad.CryptoConfig;
 import com.arquitectura.infraestructura.transporte.ProtocoloTransporte;
 import com.arquitectura.infraestructura.transporte.ProtocoloTransporteFactory;
+import com.arquitectura.infraestructura.transporte.GestorTransferenciasUtil;
 
 import java.io.*;
 import java.util.Properties;
-import java.util.logging.Level;
 import java.util.logging.Logger;
 
 public class Main {
@@ -37,7 +37,8 @@ public class Main {
 
             CryptoConfig.configurar(properties);
             ConexionMySql.configurar(properties);
-            LogConfig.configureDatabaseLogging();
+            // Comentar para evitar problemas con logging en BD
+            // LogConfig.configureDatabaseLogging();
             Runtime.getRuntime().addShutdownHook(new Thread(ConexionMySql::cerrar));
 
             ProtocoloTransporte transporte = ProtocoloTransporteFactory.crear(protocolo);
@@ -46,20 +47,37 @@ public class Main {
 
             transporte.iniciar(puerto);
 
+            // Inicializar gestor de transferencias streaming
+            GestorTransferenciasUtil.inicializar(transporte);
+            Runtime.getRuntime().addShutdownHook(new Thread(GestorTransferenciasUtil::detener));
+
             MensajeRouter router = MensajeRouterFactory.crearRouter();
             RespuestaSender sender = new RespuestaSender();
             ProcesadorMensajes procesador = new ProcesadorMensajes(router);
 
+            LOGGER.info("=".repeat(80));
+            LOGGER.info("SERVIDOR INICIADO CORRECTAMENTE");
+            LOGGER.info("Protocolo: " + transporte.getNombre());
+            LOGGER.info("Puerto: " + puerto);
+            LOGGER.info("Soporte de archivos >1GB: ✓ HABILITADO (Streaming)");
+            LOGGER.info("=".repeat(80));
+
             while (true) {
-
-                PaqueteDatos paquete = transporte.recibir();
-
-                String respuesta = procesador.procesar(paquete);
-
-                sender.enviar(paquete, respuesta, transporte);
+                try {
+                    PaqueteDatos paquete = transporte.recibir();
+                    String respuesta = procesador.procesar(paquete);
+                    sender.enviar(paquete, respuesta, transporte);
+                } catch (Exception e) {
+                    // Loguear solo en consola, no en BD para evitar ciclos de error
+                    System.err.println("ERROR procesando mensaje: " + e.getMessage());
+                    e.printStackTrace();
+                }
             }
+
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Error en servidor", e);
+            System.err.println("ERROR FATAL en servidor: " + e.getMessage());
+            e.printStackTrace();
+            System.exit(1);
         }
     }
 }
