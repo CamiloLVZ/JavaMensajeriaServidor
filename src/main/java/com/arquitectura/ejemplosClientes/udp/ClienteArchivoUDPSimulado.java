@@ -9,11 +9,16 @@ import com.arquitectura.mensajeria.enums.Protocolo;
 import com.arquitectura.mensajeria.enums.TipoMensaje;
 import com.arquitectura.mensajeria.payload.PayloadEnviarArchivo;
 
+import javax.swing.JFileChooser;
+import java.io.File;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
+import java.util.Base64;
 import java.util.UUID;
 
 public class ClienteArchivoUDPSimulado {
@@ -37,10 +42,17 @@ public class ClienteArchivoUDPSimulado {
             mensaje.setMetadata(metadata);
 
             PayloadEnviarArchivo payload = new PayloadEnviarArchivo();
-            payload.setNombre("nota-servidor-udp");
-            payload.setExtension("txt");
-            payload.setContenido("Este es un archivo de prueba enviado al servidor por UDP.");
-            payload.setTamano(payload.getContenido().getBytes(StandardCharsets.UTF_8).length);
+            Path archivoSeleccionado = seleccionarArchivo();
+            if (archivoSeleccionado == null) {
+                System.out.println("No se selecciono ningun archivo. Envio cancelado.");
+                return;
+            }
+
+            byte[] contenidoBytes = Files.readAllBytes(archivoSeleccionado);
+            payload.setNombre(extraerNombreBase(archivoSeleccionado.getFileName().toString()));
+            payload.setExtension(extraerExtension(archivoSeleccionado.getFileName().toString()));
+            payload.setContenido(Base64.getEncoder().encodeToString(contenidoBytes));
+            payload.setTamano(contenidoBytes.length);
             payload.setClientIdDestino("servidor");
             mensaje.setPayload(payload);
 
@@ -71,5 +83,39 @@ public class ClienteArchivoUDPSimulado {
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+
+    private static Path seleccionarArchivo() {
+        JFileChooser fileChooser = new JFileChooser();
+        fileChooser.setDialogTitle("Selecciona un archivo para enviar");
+        int resultado = fileChooser.showOpenDialog(null);
+        if (resultado != JFileChooser.APPROVE_OPTION) {
+            return null;
+        }
+
+        File archivo = fileChooser.getSelectedFile();
+        if (archivo == null) {
+            return null;
+        }
+
+        return archivo.toPath();
+    }
+
+    private static String extraerNombreBase(String nombreArchivoCompleto) {
+        int ultimoPunto = nombreArchivoCompleto.lastIndexOf('.');
+        if (ultimoPunto <= 0) {
+            return nombreArchivoCompleto;
+        }
+
+        return nombreArchivoCompleto.substring(0, ultimoPunto);
+    }
+
+    private static String extraerExtension(String nombreArchivoCompleto) {
+        int ultimoPunto = nombreArchivoCompleto.lastIndexOf('.');
+        if (ultimoPunto <= 0 || ultimoPunto == nombreArchivoCompleto.length() - 1) {
+            return "";
+        }
+
+        return nombreArchivoCompleto.substring(ultimoPunto + 1);
     }
 }
