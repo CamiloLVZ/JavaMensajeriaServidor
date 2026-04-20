@@ -2,9 +2,11 @@ package com.arquitectura.dominio.handlers;
 
 import com.arquitectura.aplicacion.ContextoSolicitud;
 import com.arquitectura.aplicacion.router.Handler;
+import com.arquitectura.aplicacion.sesion.GestorSesiones;
 import com.arquitectura.dominio.repositorios.MensajeRepository;
 import com.arquitectura.dominio.repositorios.JpaMensajeRepository;
 import com.arquitectura.infraestructura.seguridad.CryptoUtil;
+import com.arquitectura.mensajeria.ErrorDetalle;
 import com.arquitectura.mensajeria.Mensaje;
 import com.arquitectura.mensajeria.Metadata;
 import com.arquitectura.mensajeria.Respuesta;
@@ -22,12 +24,18 @@ public class MensajeTextoHandler implements Handler<PayloadEnviarMensaje> {
 
     private static final Logger LOGGER = Logger.getLogger(MensajeTextoHandler.class.getName());
     private final MensajeRepository mensajeRepository = new JpaMensajeRepository();
+    private final GestorSesiones gestorSesiones = GestorSesiones.getInstance();
 
     @Override
     public Respuesta<?> handle(Mensaje<PayloadEnviarMensaje> mensaje) {
 
         PayloadEnviarMensaje payload = mensaje.getPayload();
         String remitente = resolverRemitente(mensaje, payload);
+        if (!gestorSesiones.existeSesionActiva(remitente)) {
+            return crearErrorSesionNoRegistrada(remitente);
+        }
+        gestorSesiones.marcarActividad(remitente);
+
         String ipRemitente = ContextoSolicitud.obtenerIpRemitente();
         String texto = payload.getContenido();
         LocalDateTime fechaEnvio = resolverFecha(mensaje);
@@ -69,12 +77,12 @@ public class MensajeTextoHandler implements Handler<PayloadEnviarMensaje> {
     }
 
     private String resolverRemitente(Mensaje<PayloadEnviarMensaje> mensaje, PayloadEnviarMensaje payload) {
-        if (payload != null && payload.getAutor() != null && !payload.getAutor().isBlank()) {
-            return payload.getAutor();
-        }
-
         if (mensaje.getMetadata() != null && mensaje.getMetadata().getClientId() != null) {
             return mensaje.getMetadata().getClientId();
+        }
+
+        if (payload != null && payload.getAutor() != null && !payload.getAutor().isBlank()) {
+            return payload.getAutor();
         }
 
         return "desconocido";
@@ -99,6 +107,16 @@ public class MensajeTextoHandler implements Handler<PayloadEnviarMensaje> {
         }
 
         return UUID.randomUUID().toString();
+    }
+
+    private Respuesta<?> crearErrorSesionNoRegistrada(String remitente) {
+        Respuesta<?> respuesta = new Respuesta<>();
+        respuesta.setEstado(Estado.ERROR);
+        respuesta.setError(new ErrorDetalle(
+                "SESION_NO_REGISTRADA",
+                "El usuario [" + remitente + "] no tiene una sesion activa. Primero debe registrarse."
+        ));
+        return respuesta;
     }
 
 }

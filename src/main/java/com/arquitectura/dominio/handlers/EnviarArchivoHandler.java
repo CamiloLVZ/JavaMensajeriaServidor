@@ -2,9 +2,11 @@ package com.arquitectura.dominio.handlers;
 
 import com.arquitectura.aplicacion.ContextoSolicitud;
 import com.arquitectura.aplicacion.router.Handler;
+import com.arquitectura.aplicacion.sesion.GestorSesiones;
 import com.arquitectura.dominio.repositorios.ArchivoRecibidoRepository;
 import com.arquitectura.dominio.repositorios.JpaArchivoRecibidoRepository;
 import com.arquitectura.infraestructura.seguridad.CryptoUtil;
+import com.arquitectura.mensajeria.ErrorDetalle;
 import com.arquitectura.mensajeria.Mensaje;
 import com.arquitectura.mensajeria.Metadata;
 import com.arquitectura.mensajeria.Respuesta;
@@ -28,12 +30,18 @@ public class EnviarArchivoHandler implements Handler<PayloadEnviarArchivo> {
     private static final Logger LOGGER = Logger.getLogger(EnviarArchivoHandler.class.getName());
     private static final Path DIRECTORIO_DESTINO = Path.of("archivos-recibidos");
     private final ArchivoRecibidoRepository archivoRecibidoRepository = new JpaArchivoRecibidoRepository();
+    private final GestorSesiones gestorSesiones = GestorSesiones.getInstance();
 
     @Override
     public Respuesta<?> handle(Mensaje<PayloadEnviarArchivo> mensaje) {
 
         PayloadEnviarArchivo payload = mensaje.getPayload();
         String remitente = resolverRemitente(mensaje);
+        if (!gestorSesiones.existeSesionActiva(remitente)) {
+            return crearErrorSesionNoRegistrada(remitente);
+        }
+        gestorSesiones.marcarActividad(remitente);
+
         String ipRemitente = ContextoSolicitud.obtenerIpRemitente();
         String mensajeId = resolverMensajeId(mensaje);
         LocalDateTime fechaRecepcion = resolverFecha(mensaje);
@@ -190,5 +198,15 @@ public class EnviarArchivoHandler implements Handler<PayloadEnviarArchivo> {
         }
 
         return LocalDateTime.now();
+    }
+
+    private Respuesta<?> crearErrorSesionNoRegistrada(String remitente) {
+        Respuesta<?> respuesta = new Respuesta<>();
+        respuesta.setEstado(Estado.ERROR);
+        respuesta.setError(new ErrorDetalle(
+                "SESION_NO_REGISTRADA",
+                "El usuario [" + remitente + "] no tiene una sesion activa. Primero debe registrarse."
+        ));
+        return respuesta;
     }
 }

@@ -1,8 +1,12 @@
 package com.arquitectura.dominio.handlers;
 
+import com.arquitectura.aplicacion.ContextoSolicitud;
+import com.arquitectura.aplicacion.sesion.GestorSesiones;
+import com.arquitectura.aplicacion.sesion.ResultadoRegistroSesion;
 import com.arquitectura.mensajeria.Mensaje;
 import com.arquitectura.mensajeria.Metadata;
 import com.arquitectura.mensajeria.Respuesta;
+import com.arquitectura.mensajeria.ErrorDetalle;
 import com.arquitectura.mensajeria.enums.Accion;
 import com.arquitectura.mensajeria.enums.Estado;
 import com.arquitectura.mensajeria.enums.TipoMensaje;
@@ -16,34 +20,55 @@ import java.util.logging.Logger;
 public class ConectarHandler implements Handler<PayloadConectar> {
 
     private static final Logger LOGGER = Logger.getLogger(ConectarHandler.class.getName());
+    private final GestorSesiones gestorSesiones = GestorSesiones.getInstance();
 
     @Override
     public Respuesta<?> handle(Mensaje<PayloadConectar> mensaje) {
 
         PayloadConectar payload = mensaje.getPayload();
-        LOGGER.info(() -> "Usuario conectado: " + payload.getUsername());
+        String username = payload != null ? payload.getUsername() : null;
+        String endpoint = ContextoSolicitud.obtenerEndpointRemitente();
+        String protocolo = ContextoSolicitud.obtenerProtocolo();
+
+        ResultadoRegistroSesion registro = gestorSesiones.registrar(username, endpoint, protocolo);
+        if (!registro.exito()) {
+            LOGGER.warning(() -> "Registro rechazado para [" + username + "] desde " + endpoint
+                    + ". Motivo: " + registro.mensaje());
+            return crearError(registro.codigoError(), registro.mensaje());
+        }
+
+        LOGGER.info(() -> "Usuario conectado: " + registro.sesion().getUsername()
+                + " | endpoint=" + endpoint + " | protocolo=" + protocolo
+                + " | sesionesActivas=" + gestorSesiones.sesionesActivas());
 
         Mensaje<String> mensajeRespuesta = new Mensaje<>();
         mensajeRespuesta.setTipo(TipoMensaje.RESPONSE);
         mensajeRespuesta.setAccion(Accion.CONECTAR);
-
         Metadata meta = new Metadata();
         meta.setIdMensaje(UUID.randomUUID().toString());
         meta.setTimestamp(LocalDateTime.now());
+        meta.setClientId(registro.sesion().getUsername());
 
         mensajeRespuesta.setMetadata(meta);
-        mensajeRespuesta.setPayload("Conexion exitosa");
+        mensajeRespuesta.setPayload("Sesion iniciada para usuario: " + registro.sesion().getUsername());
 
         Respuesta<String> respuesta = new Respuesta<>();
         respuesta.setMensaje(mensajeRespuesta);
         respuesta.setEstado(Estado.EXITO);
 
-        LOGGER.info(() -> "Respuesta de conexion generada para " + payload.getUsername());
+        LOGGER.info(() -> "Respuesta de conexion generada para " + registro.sesion().getUsername());
         return respuesta;
     }
 
     @Override
     public Class<PayloadConectar> getPayloadClass() {
         return PayloadConectar.class;
+    }
+
+    private Respuesta<?> crearError(String codigo, String detalle) {
+        Respuesta<?> respuesta = new Respuesta<>();
+        respuesta.setEstado(Estado.ERROR);
+        respuesta.setError(new ErrorDetalle(codigo, detalle));
+        return respuesta;
     }
 }
