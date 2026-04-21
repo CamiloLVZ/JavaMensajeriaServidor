@@ -56,7 +56,6 @@ public class ConectarHandler implements Handler<PayloadConectar> {
         respuesta.setMensaje(mensajeRespuesta);
         respuesta.setEstado(Estado.EXITO);
 
-        LOGGER.info(() -> "Respuesta de conexion generada para " + registro.sesion().getUsername());
         return respuesta;
     }
 

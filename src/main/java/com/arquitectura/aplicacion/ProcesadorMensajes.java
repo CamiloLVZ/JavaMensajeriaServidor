@@ -49,23 +49,24 @@ public class ProcesadorMensajes {
 
     private Mensaje<?> resolverMensaje(String json) {
         Map<String, Object> data = JsonUtil.fromJson(json, Map.class);
-        Object type = data.get("type");
+        Object accion = data.get("accion");
 
-        if (type != null && "REGISTER".equalsIgnoreCase(String.valueOf(type))) {
+        if (accion != null && "CONECTAR".equalsIgnoreCase(String.valueOf(accion))) {
             return convertirRegistroPlano(data);
         }
 
         return JsonUtil.fromJson(json, Mensaje.class);
     }
 
-    /**
-     * Soporte para entrada simplificada:
-     * { "type": "REGISTER", "username": "juan" }
-     */
     private Mensaje<PayloadConectar> convertirRegistroPlano(Map<String, Object> data) {
         PayloadConectar payload = new PayloadConectar();
-        Object username = data.get("username");
-        payload.setUsername(username == null ? "" : String.valueOf(username));
+        Object payloadRecibido = data.get("payload");
+        if (payloadRecibido instanceof Map<?, ?> payloadMap) {
+            Object username = payloadMap.get("username");
+            payload.setUsername(username == null ? "" : String.valueOf(username));
+        } else {
+            payload.setUsername("");
+        }
 
         Metadata metadata = new Metadata();
         metadata.setIdMensaje(UUID.randomUUID().toString());

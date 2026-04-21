@@ -75,8 +75,7 @@ public class Main {
                 }
             }));
 
-            LOGGER.info(() -> "Servidor iniciado con protocolo: " + transporte.getNombre()
-                    + " | max-clients=" + maxClientes);
+            LOGGER.info(() -> "Servidor iniciado. Protocolo: " + transporte.getNombre() + " | Puerto: "+ puerto +" | max-clients=" + maxClientes);
 
             while (true) {
                 // El transporte abstrae TCP/UDP. Siempre devolvemos el mismo DTO PaqueteDatos.

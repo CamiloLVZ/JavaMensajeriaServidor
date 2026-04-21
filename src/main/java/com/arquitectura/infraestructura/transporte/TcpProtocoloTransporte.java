@@ -22,7 +22,6 @@ public class TcpProtocoloTransporte implements ProtocoloTransporte {
         try {
             serverSocket = new ServerSocket(puerto);
             activo = true;
-            LOGGER.info(() -> "Transporte TCP iniciado en puerto " + puerto);
         } catch (Exception e) {
             throw new RuntimeException("Error iniciando TCP", e);
         }
@@ -33,7 +32,6 @@ public class TcpProtocoloTransporte implements ProtocoloTransporte {
         try (Socket socket = new Socket(hostDestino, puertoDestino);
              OutputStream output = socket.getOutputStream()) {
 
-            LOGGER.info(() -> "Enviando " + datos.length + " bytes por TCP a " + hostDestino + ":" + puertoDestino);
             output.write(datos);
             output.flush();
 

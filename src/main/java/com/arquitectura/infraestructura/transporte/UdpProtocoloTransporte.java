@@ -19,7 +19,6 @@ public class UdpProtocoloTransporte implements ProtocoloTransporte {
         try {
             socket = new DatagramSocket(puerto);
             activo = true;
-            LOGGER.info(() -> "Transporte UDP iniciado en puerto " + puerto);
         } catch (Exception e) {
             throw new RuntimeException("Error iniciando UDP", e);
         }
@@ -31,7 +30,6 @@ public class UdpProtocoloTransporte implements ProtocoloTransporte {
             InetAddress direccion = InetAddress.getByName(hostDestino);
             DatagramPacket paquete = new DatagramPacket(datos, datos.length, direccion, puertoDestino);
             socket.send(paquete);
-            LOGGER.info(() -> "Enviando " + datos.length + " bytes por UDP a " + hostDestino + ":" + puertoDestino);
         } catch (Exception e) {
             throw new RuntimeException("Error enviando datos por UDP", e);
         }

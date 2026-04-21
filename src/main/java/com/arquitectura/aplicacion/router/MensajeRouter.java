@@ -20,23 +20,19 @@ public class MensajeRouter {
 
     public void registrarHandler(Accion accion, Handler<?> handler) {
         handlers.put(accion, handler);
-        LOGGER.info(() -> "Handler registrado para accion " + accion + ": " + handler.getClass().getSimpleName());
     }
 
     public Respuesta<?> responder(Mensaje<?> mensaje) {
 
-        LOGGER.info(() -> "Resolviendo handler para accion " + mensaje.getAccion());
         Handler<?> handler = handlers.get(mensaje.getAccion());
 
         if (handler == null) {
-            LOGGER.warning(() -> "No existe handler para accion " + mensaje.getAccion());
             return crearError("ACCION_NO_SOPORTADA", "No existe handler para la accion");
         }
 
         try {
             return ejecutarHandler(handler, mensaje);
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Error ejecutando handler para accion " + mensaje.getAccion(), e);
             return crearError("ERROR_INTERNO", e.getMessage());
         }
     }
@@ -51,7 +47,6 @@ public class MensajeRouter {
         mensajeTipado.setMetadata(mensaje.getMetadata());
         mensajeTipado.setPayload(payloadConvertido);
 
-        LOGGER.info(() -> "Ejecutando handler " + handler.getClass().getSimpleName());
         return handler.handle(mensajeTipado);
     }
 
