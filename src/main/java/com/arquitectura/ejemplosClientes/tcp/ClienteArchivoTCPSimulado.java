@@ -16,22 +16,56 @@ import java.io.File;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.net.Socket;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.UUID;
 
 public class ClienteArchivoTCPSimulado {
 
+    private static final String DEFAULT_HOST = "localhost";
+    private static final int DEFAULT_PORT = 8080;
+    private static final String DEFAULT_USERNAME = "cliente-archivo-tcp";
+
     public static void main(String[] args) {
+        String host = args.length > 0 ? args[0] : DEFAULT_HOST;
+        int puerto = args.length > 1 ? Integer.parseInt(args[1]) : DEFAULT_PORT;
+        String username = args.length > 2 ? args[2] : DEFAULT_USERNAME;
 
-        String host = "localhost";
-        int puerto = 8080;
+        try {
+            Path archivoSeleccionado = seleccionarArchivo();
+            if (archivoSeleccionado == null) {
+                System.out.println("No se selecciono ningun archivo. Envio cancelado.");
+                return;
+            }
 
+            enviarConexion(host, puerto, username);
+            enviarArchivo(host, puerto, username, archivoSeleccionado);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static void enviarConexion(String host, int puerto, String username) throws Exception {
         try (Socket socket = new Socket(host, puerto)) {
+            BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8));
+            BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
 
+            String json = JsonUtil.toJson(ClienteConexionTCPSimulado.crearMensajeConexion(username));
+            writer.write(json);
+            writer.newLine();
+            writer.flush();
+
+            String jsonRespuesta = reader.readLine();
+            System.out.println("[CLIENTE-TCP] Registro previo:");
+            System.out.println(jsonRespuesta);
+        }
+    }
+
+    private static void enviarArchivo(String host, int puerto, String username, Path archivoSeleccionado) throws Exception {
+        try (Socket socket = new Socket(host, puerto)) {
             BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8));
             BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
 
@@ -41,19 +75,13 @@ public class ClienteArchivoTCPSimulado {
 
             Metadata metadata = new Metadata();
             metadata.setIdMensaje(UUID.randomUUID().toString());
-            metadata.setClientId("cliente-archivo");
+            metadata.setClientId(username);
             metadata.setTimestamp(LocalDateTime.now());
             metadata.setProtocolo(Protocolo.TCP);
             mensaje.setMetadata(metadata);
 
-            PayloadEnviarArchivo payload = new PayloadEnviarArchivo();
-            Path archivoSeleccionado = seleccionarArchivo();
-            if (archivoSeleccionado == null) {
-                System.out.println("No se selecciono ningun archivo. Envio cancelado.");
-                return;
-            }
-
             byte[] contenidoBytes = Files.readAllBytes(archivoSeleccionado);
+            PayloadEnviarArchivo payload = new PayloadEnviarArchivo();
             payload.setNombre(extraerNombreBase(archivoSeleccionado.getFileName().toString()));
             payload.setExtension(extraerExtension(archivoSeleccionado.getFileName().toString()));
             payload.setContenido(Base64.getEncoder().encodeToString(contenidoBytes));
@@ -72,9 +100,6 @@ public class ClienteArchivoTCPSimulado {
             System.out.println(json);
             System.out.println(jsonRespuesta);
             System.out.println("Estado: " + respuesta.getEstado());
-
-        } catch (Exception e) {
-            e.printStackTrace();
         }
     }
 
@@ -87,11 +112,7 @@ public class ClienteArchivoTCPSimulado {
         }
 
         File archivo = fileChooser.getSelectedFile();
-        if (archivo == null) {
-            return null;
-        }
-
-        return archivo.toPath();
+        return archivo == null ? null : archivo.toPath();
     }
 
     private static String extraerNombreBase(String nombreArchivoCompleto) {
@@ -99,7 +120,6 @@ public class ClienteArchivoTCPSimulado {
         if (ultimoPunto <= 0) {
             return nombreArchivoCompleto;
         }
-
         return nombreArchivoCompleto.substring(0, ultimoPunto);
     }
 
@@ -108,7 +128,6 @@ public class ClienteArchivoTCPSimulado {
         if (ultimoPunto <= 0 || ultimoPunto == nombreArchivoCompleto.length() - 1) {
             return "";
         }
-
         return nombreArchivoCompleto.substring(ultimoPunto + 1);
     }
 }

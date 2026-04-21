@@ -3,8 +3,9 @@ package com.arquitectura.dominio.handlers;
 import com.arquitectura.aplicacion.ContextoSolicitud;
 import com.arquitectura.aplicacion.router.Handler;
 import com.arquitectura.aplicacion.sesion.GestorSesiones;
-import com.arquitectura.dominio.repositorios.MensajeRepository;
+import com.arquitectura.aplicacion.sesion.ResultadoValidacionSesion;
 import com.arquitectura.dominio.repositorios.JpaMensajeRepository;
+import com.arquitectura.dominio.repositorios.MensajeRepository;
 import com.arquitectura.infraestructura.seguridad.CryptoUtil;
 import com.arquitectura.mensajeria.ErrorDetalle;
 import com.arquitectura.mensajeria.Mensaje;
@@ -28,13 +29,17 @@ public class MensajeTextoHandler implements Handler<PayloadEnviarMensaje> {
 
     @Override
     public Respuesta<?> handle(Mensaje<PayloadEnviarMensaje> mensaje) {
-
         PayloadEnviarMensaje payload = mensaje.getPayload();
         String remitente = resolverRemitente(mensaje, payload);
-        if (!gestorSesiones.existeSesionActiva(remitente)) {
-            return crearErrorSesionNoRegistrada(remitente);
+        ResultadoValidacionSesion validacion = gestorSesiones.validarSesion(
+                remitente,
+                ContextoSolicitud.obtenerIpRemitente(),
+                puertoRemitente(),
+                ContextoSolicitud.obtenerProtocolo()
+        );
+        if (!validacion.exito()) {
+            return crearErrorSesion(validacion.codigoError(), validacion.mensaje());
         }
-        gestorSesiones.marcarActividad(remitente);
 
         String ipRemitente = ContextoSolicitud.obtenerIpRemitente();
         String texto = payload.getContenido();
@@ -60,7 +65,6 @@ public class MensajeTextoHandler implements Handler<PayloadEnviarMensaje> {
         Respuesta<String> respuesta = new Respuesta<>();
         respuesta.setEstado(Estado.EXITO);
         respuesta.setMensaje(mensajeRespuesta);
-
         return respuesta;
     }
 
@@ -80,11 +84,9 @@ public class MensajeTextoHandler implements Handler<PayloadEnviarMensaje> {
         if (mensaje.getMetadata() != null && mensaje.getMetadata().getClientId() != null) {
             return mensaje.getMetadata().getClientId();
         }
-
         if (payload != null && payload.getAutor() != null && !payload.getAutor().isBlank()) {
             return payload.getAutor();
         }
-
         return "desconocido";
     }
 
@@ -92,7 +94,6 @@ public class MensajeTextoHandler implements Handler<PayloadEnviarMensaje> {
         if (mensaje.getMetadata() != null && mensaje.getMetadata().getTimestamp() != null) {
             return mensaje.getMetadata().getTimestamp();
         }
-
         return LocalDateTime.now();
     }
 
@@ -105,18 +106,18 @@ public class MensajeTextoHandler implements Handler<PayloadEnviarMensaje> {
                 LOGGER.warning(() -> "idMensaje recibido no es UUID valido, se generara uno nuevo");
             }
         }
-
         return UUID.randomUUID().toString();
     }
 
-    private Respuesta<?> crearErrorSesionNoRegistrada(String remitente) {
-        Respuesta<?> respuesta = new Respuesta<>();
-        respuesta.setEstado(Estado.ERROR);
-        respuesta.setError(new ErrorDetalle(
-                "SESION_NO_REGISTRADA",
-                "El usuario [" + remitente + "] no tiene una sesion activa. Primero debe registrarse."
-        ));
-        return respuesta;
+    private int puertoRemitente() {
+        Integer puerto = ContextoSolicitud.obtenerPuertoRemitente();
+        return puerto == null ? -1 : puerto;
     }
 
+    private Respuesta<?> crearErrorSesion(String codigo, String detalle) {
+        Respuesta<?> respuesta = new Respuesta<>();
+        respuesta.setEstado(Estado.ERROR);
+        respuesta.setError(new ErrorDetalle(codigo, detalle));
+        return respuesta;
+    }
 }

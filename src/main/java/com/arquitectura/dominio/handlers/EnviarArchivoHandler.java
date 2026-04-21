@@ -3,6 +3,7 @@ package com.arquitectura.dominio.handlers;
 import com.arquitectura.aplicacion.ContextoSolicitud;
 import com.arquitectura.aplicacion.router.Handler;
 import com.arquitectura.aplicacion.sesion.GestorSesiones;
+import com.arquitectura.aplicacion.sesion.ResultadoValidacionSesion;
 import com.arquitectura.dominio.repositorios.ArchivoRecibidoRepository;
 import com.arquitectura.dominio.repositorios.JpaArchivoRecibidoRepository;
 import com.arquitectura.infraestructura.seguridad.CryptoUtil;
@@ -34,13 +35,17 @@ public class EnviarArchivoHandler implements Handler<PayloadEnviarArchivo> {
 
     @Override
     public Respuesta<?> handle(Mensaje<PayloadEnviarArchivo> mensaje) {
-
         PayloadEnviarArchivo payload = mensaje.getPayload();
         String remitente = resolverRemitente(mensaje);
-        if (!gestorSesiones.existeSesionActiva(remitente)) {
-            return crearErrorSesionNoRegistrada(remitente);
+        ResultadoValidacionSesion validacion = gestorSesiones.validarSesion(
+                remitente,
+                ContextoSolicitud.obtenerIpRemitente(),
+                puertoRemitente(),
+                ContextoSolicitud.obtenerProtocolo()
+        );
+        if (!validacion.exito()) {
+            return crearErrorSesion(validacion.codigoError(), validacion.mensaje());
         }
-        gestorSesiones.marcarActividad(remitente);
 
         String ipRemitente = ContextoSolicitud.obtenerIpRemitente();
         String mensajeId = resolverMensajeId(mensaje);
@@ -65,8 +70,10 @@ public class EnviarArchivoHandler implements Handler<PayloadEnviarArchivo> {
                     fechaRecepcion
             );
 
-            LOGGER.info(() -> "Archivo recibido: " + nombreFinalArchivo + " desde " + remitente + " (" + ipRemitente + ") | Hash: " + hashSha256);
-            System.out.println("[SERVIDOR] Archivo recibido de " + remitente + " (" + ipRemitente + "): " + rutaArchivo.toAbsolutePath());
+            LOGGER.info(() -> "Archivo recibido: " + nombreFinalArchivo + " desde " + remitente + " ("
+                    + ipRemitente + ") | Hash: " + hashSha256);
+            System.out.println("[SERVIDOR] Archivo recibido de " + remitente + " (" + ipRemitente + "): "
+                    + rutaArchivo.toAbsolutePath());
 
             return crearRespuestaExitosa(nombreFinalArchivo, rutaArchivo);
         } catch (IOException e) {
@@ -82,10 +89,8 @@ public class EnviarArchivoHandler implements Handler<PayloadEnviarArchivo> {
 
     private Path guardarArchivo(PayloadEnviarArchivo payload, byte[] contenidoArchivo) throws IOException {
         Files.createDirectories(DIRECTORIO_DESTINO);
-
         String nombreArchivoNormalizado = construirNombreArchivo(payload);
         Path rutaArchivo = resolverRutaSinColision(nombreArchivoNormalizado);
-
         Files.write(rutaArchivo, contenidoArchivo);
         return rutaArchivo;
     }
@@ -93,11 +98,9 @@ public class EnviarArchivoHandler implements Handler<PayloadEnviarArchivo> {
     private String construirNombreArchivo(PayloadEnviarArchivo payload) {
         String extension = payload.getExtension();
         String nombre = payload.getNombre();
-
         if (extension == null || extension.isBlank() || nombre.endsWith("." + extension)) {
             return nombre;
         }
-
         return nombre + "." + extension;
     }
 
@@ -109,7 +112,6 @@ public class EnviarArchivoHandler implements Handler<PayloadEnviarArchivo> {
 
         String extension = extraerExtension(nombreArchivo);
         String nombreBase = extraerNombreBase(nombreArchivo);
-
         int contador = 1;
         Path rutaCandidata = rutaInicial;
         while (Files.exists(rutaCandidata)) {
@@ -119,7 +121,6 @@ public class EnviarArchivoHandler implements Handler<PayloadEnviarArchivo> {
             rutaCandidata = DIRECTORIO_DESTINO.resolve(nombreConSufijo);
             contador++;
         }
-
         return rutaCandidata;
     }
 
@@ -128,7 +129,6 @@ public class EnviarArchivoHandler implements Handler<PayloadEnviarArchivo> {
         if (ultimoPunto <= 0) {
             return nombreArchivoCompleto;
         }
-
         return nombreArchivoCompleto.substring(0, ultimoPunto);
     }
 
@@ -137,13 +137,11 @@ public class EnviarArchivoHandler implements Handler<PayloadEnviarArchivo> {
         if (ultimoPunto <= 0 || ultimoPunto == nombreArchivoCompleto.length() - 1) {
             return "";
         }
-
         return nombreArchivoCompleto.substring(ultimoPunto + 1).toLowerCase(Locale.ROOT);
     }
 
     private byte[] obtenerContenido(PayloadEnviarArchivo payload) {
         String contenido = payload.getContenido();
-
         try {
             return Base64.getDecoder().decode(contenido);
         } catch (IllegalArgumentException e) {
@@ -175,7 +173,6 @@ public class EnviarArchivoHandler implements Handler<PayloadEnviarArchivo> {
         if (mensaje.getMetadata() != null && mensaje.getMetadata().getClientId() != null) {
             return mensaje.getMetadata().getClientId();
         }
-
         return "desconocido";
     }
 
@@ -188,7 +185,6 @@ public class EnviarArchivoHandler implements Handler<PayloadEnviarArchivo> {
                 LOGGER.warning(() -> "idMensaje recibido no es UUID valido, se generara uno nuevo");
             }
         }
-
         return UUID.randomUUID().toString();
     }
 
@@ -196,17 +192,18 @@ public class EnviarArchivoHandler implements Handler<PayloadEnviarArchivo> {
         if (mensaje.getMetadata() != null && mensaje.getMetadata().getTimestamp() != null) {
             return mensaje.getMetadata().getTimestamp();
         }
-
         return LocalDateTime.now();
     }
 
-    private Respuesta<?> crearErrorSesionNoRegistrada(String remitente) {
+    private int puertoRemitente() {
+        Integer puerto = ContextoSolicitud.obtenerPuertoRemitente();
+        return puerto == null ? -1 : puerto;
+    }
+
+    private Respuesta<?> crearErrorSesion(String codigo, String detalle) {
         Respuesta<?> respuesta = new Respuesta<>();
         respuesta.setEstado(Estado.ERROR);
-        respuesta.setError(new ErrorDetalle(
-                "SESION_NO_REGISTRADA",
-                "El usuario [" + remitente + "] no tiene una sesion activa. Primero debe registrarse."
-        ));
+        respuesta.setError(new ErrorDetalle(codigo, detalle));
         return respuesta;
     }
 }

@@ -69,6 +69,7 @@ public class Main {
                     if (!ejecutorClientes.awaitTermination(5, TimeUnit.SECONDS)) {
                         ejecutorClientes.shutdownNow();
                     }
+                    GestorSesiones.getInstance().cerrarTodas();
                     ConexionMySql.cerrar();
                 } catch (Exception e) {
                     LOGGER.log(Level.WARNING, "Error durante el apagado del servidor", e);

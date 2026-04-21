@@ -3,19 +3,21 @@ package com.arquitectura.aplicacion.sesion;
 import java.time.Instant;
 
 /**
- * Representa una sesión activa en memoria.
+ * Representa una sesion activa en memoria.
  */
 public class SesionCliente {
 
     private final String username;
-    private final String endpoint;
-    private final String protocolo;
     private final Instant creadoEn;
+    private volatile String ipRemitente;
+    private volatile int puertoRemitente;
+    private volatile String protocolo;
     private volatile Instant ultimoAcceso;
 
-    public SesionCliente(String username, String endpoint, String protocolo) {
+    public SesionCliente(String username, String ipRemitente, int puertoRemitente, String protocolo) {
         this.username = username;
-        this.endpoint = endpoint;
+        this.ipRemitente = ipRemitente;
+        this.puertoRemitente = puertoRemitente;
         this.protocolo = protocolo;
         this.creadoEn = Instant.now();
         this.ultimoAcceso = this.creadoEn;
@@ -25,12 +27,23 @@ public class SesionCliente {
         return username;
     }
 
-    public String getEndpoint() {
-        return endpoint;
+    public String getIpRemitente() {
+        return ipRemitente;
+    }
+
+    public int getPuertoRemitente() {
+        return puertoRemitente;
     }
 
     public String getProtocolo() {
         return protocolo;
+    }
+
+    public String getEndpoint() {
+        if (puertoRemitente <= 0) {
+            return ipRemitente;
+        }
+        return ipRemitente + ":" + puertoRemitente;
     }
 
     public Instant getCreadoEn() {
@@ -39,6 +52,36 @@ public class SesionCliente {
 
     public Instant getUltimoAcceso() {
         return ultimoAcceso;
+    }
+
+    public synchronized void actualizarOrigen(String ipRemitente, int puertoRemitente, String protocolo) {
+        this.ipRemitente = ipRemitente;
+        this.puertoRemitente = puertoRemitente;
+        this.protocolo = protocolo;
+        marcarActividad();
+    }
+
+    public boolean mismoCanalLogico(String ipRemitente, String protocolo) {
+        return this.ipRemitente != null
+                && this.ipRemitente.equals(ipRemitente)
+                && this.protocolo != null
+                && this.protocolo.equalsIgnoreCase(protocolo);
+    }
+
+    public boolean mismaConexion(String ipRemitente, int puertoRemitente, String protocolo) {
+        return mismoCanalLogico(ipRemitente, protocolo) && this.puertoRemitente == puertoRemitente;
+    }
+
+    public boolean aceptaOperacionDesde(String ipRemitente, int puertoRemitente, String protocolo) {
+        if (!mismoCanalLogico(ipRemitente, protocolo)) {
+            return false;
+        }
+
+        if ("TCP".equalsIgnoreCase(protocolo)) {
+            return true;
+        }
+
+        return this.puertoRemitente == puertoRemitente;
     }
 
     public void marcarActividad() {

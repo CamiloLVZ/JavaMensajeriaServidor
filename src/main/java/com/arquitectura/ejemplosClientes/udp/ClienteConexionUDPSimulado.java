@@ -17,83 +17,60 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 public class ClienteConexionUDPSimulado {
-    public static void main(String[] args) {
 
-        String host = "localhost";
-        int puertoServidor = 8080;
+    private static final String DEFAULT_HOST = "localhost";
+    private static final int DEFAULT_PORT = 8080;
+    private static final String DEFAULT_USERNAME = "cliente-udp-demo";
+
+    public static void main(String[] args) {
+        String host = args.length > 0 ? args[0] : DEFAULT_HOST;
+        int puertoServidor = args.length > 1 ? Integer.parseInt(args[1]) : DEFAULT_PORT;
+        String username = args.length > 2 ? args[2] : DEFAULT_USERNAME;
 
         try (DatagramSocket socket = new DatagramSocket()) {
+            String jsonRespuesta = enviarConexion(socket, host, puertoServidor, username);
+            Respuesta<?> respuesta = JsonUtil.fromJson(jsonRespuesta, Respuesta.class);
 
-            System.out.println("[CLIENTE-UDP] Iniciado");
-
-            // 🔥 Crear mensaje
-            Mensaje<PayloadConectar> mensaje = new Mensaje<>();
-            mensaje.setTipo(TipoMensaje.REQUEST);
-            mensaje.setAccion(Accion.CONECTAR);
-
-            Metadata meta = new Metadata();
-            meta.setIdMensaje(UUID.randomUUID().toString());
-            meta.setTimestamp(LocalDateTime.now());
-            meta.setProtocolo(Protocolo.UDP);
-
-            mensaje.setMetadata(meta);
-
-            PayloadConectar payload = new PayloadConectar();
-            payload.setUsername("juan");
-
-            mensaje.setPayload(payload);
-
-            // 🔥 Serializar
-            String json = JsonUtil.toJson(mensaje);
-            byte[] data = json.getBytes(StandardCharsets.UTF_8);
-
-            System.out.println("[CLIENTE-UDP] Enviando:");
-            System.out.println(json);
-
-            // 🔥 Enviar datagrama
-            InetAddress address = InetAddress.getByName(host);
-
-            DatagramPacket paqueteEnvio = new DatagramPacket(
-                    data,
-                    data.length,
-                    address,
-                    puertoServidor
-            );
-
-            socket.send(paqueteEnvio);
-
-            System.out.println("[CLIENTE-UDP] Mensaje enviado");
-
-            // 🔥 Preparar buffer para respuesta
-            byte[] buffer = new byte[65535];
-
-            DatagramPacket paqueteRespuesta = new DatagramPacket(
-                    buffer,
-                    buffer.length
-            );
-
-            System.out.println("[CLIENTE-UDP] Esperando respuesta...");
-
-            socket.receive(paqueteRespuesta);
-
-            String jsonRespuesta = new String(
-                    paqueteRespuesta.getData(),
-                    0,
-                    paqueteRespuesta.getLength(),
-                    StandardCharsets.UTF_8
-            );
-
-            System.out.println("[CLIENTE-UDP] Respuesta recibida:");
+            System.out.println("[CLIENTE-UDP] Respuesta:");
             System.out.println(jsonRespuesta);
-
-            // 🔥 Deserializar respuesta
-            Respuesta<?> respuesta =
-                    JsonUtil.fromJson(jsonRespuesta, Respuesta.class);
-
             System.out.println("[CLIENTE-UDP] Estado: " + respuesta.getEstado());
-
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+
+    public static String enviarConexion(DatagramSocket socket, String host, int puertoServidor, String username) throws Exception {
+        String json = JsonUtil.toJson(crearMensajeConexion(username));
+        System.out.println("[CLIENTE-UDP] Enviando registro para " + username);
+        System.out.println(json);
+
+        InetAddress address = InetAddress.getByName(host);
+        byte[] data = json.getBytes(StandardCharsets.UTF_8);
+        DatagramPacket paqueteEnvio = new DatagramPacket(data, data.length, address, puertoServidor);
+        socket.send(paqueteEnvio);
+
+        byte[] buffer = new byte[65535];
+        DatagramPacket paqueteRespuesta = new DatagramPacket(buffer, buffer.length);
+        socket.receive(paqueteRespuesta);
+
+        return new String(paqueteRespuesta.getData(), 0, paqueteRespuesta.getLength(), StandardCharsets.UTF_8);
+    }
+
+    public static Mensaje<PayloadConectar> crearMensajeConexion(String username) {
+        Mensaje<PayloadConectar> mensaje = new Mensaje<>();
+        mensaje.setTipo(TipoMensaje.REQUEST);
+        mensaje.setAccion(Accion.CONECTAR);
+
+        Metadata metadata = new Metadata();
+        metadata.setIdMensaje(UUID.randomUUID().toString());
+        metadata.setTimestamp(LocalDateTime.now());
+        metadata.setClientId(username);
+        metadata.setProtocolo(Protocolo.UDP);
+        mensaje.setMetadata(metadata);
+
+        PayloadConectar payload = new PayloadConectar();
+        payload.setUsername(username);
+        mensaje.setPayload(payload);
+        return mensaje;
     }
 }
