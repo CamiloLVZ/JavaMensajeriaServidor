@@ -6,6 +6,7 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityTransaction;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 public class JpaMensajeRepository implements MensajeRepository {
 
@@ -35,6 +36,19 @@ public class JpaMensajeRepository implements MensajeRepository {
             throw new IllegalStateException("No fue posible guardar el mensaje en MySQL", e);
         } finally {
             entityManager.close();
+        }
+    }
+
+    @Override
+    public List<MensajeModel> listarTodos() {
+        EntityManager em = HibernateManager.crearEntityManager();
+        try {
+            return em.createQuery(
+                "SELECT m FROM MensajeModel m ORDER BY m.fechaEnvio DESC",
+                MensajeModel.class
+            ).getResultList();
+        } finally {
+            em.close();
         }
     }
 }

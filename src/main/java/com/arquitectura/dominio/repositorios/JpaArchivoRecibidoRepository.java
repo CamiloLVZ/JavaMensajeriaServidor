@@ -6,6 +6,7 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityTransaction;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 public class JpaArchivoRecibidoRepository implements ArchivoRecibidoRepository {
 
@@ -40,6 +41,19 @@ public class JpaArchivoRecibidoRepository implements ArchivoRecibidoRepository {
             throw new IllegalStateException("No fue posible guardar la ruta del archivo en MySQL", e);
         } finally {
             entityManager.close();
+        }
+    }
+
+    @Override
+    public List<ArchivoRecibidoModel> listarTodos() {
+        EntityManager em = HibernateManager.crearEntityManager();
+        try {
+            return em.createQuery(
+                "SELECT a FROM ArchivoRecibidoModel a ORDER BY a.fechaRecepcion DESC",
+                ArchivoRecibidoModel.class
+            ).getResultList();
+        } finally {
+            em.close();
         }
     }
 }
