@@ -35,13 +35,20 @@ public final class LogConfig {
             consoleHandler.setFormatter(new Formatter() {
                 @Override
                 public String format(LogRecord record) {
-                    return String.format(
+                    StringBuilder sb = new StringBuilder();
+                    sb.append(String.format(
                             "[%1$tF %1$tT] [%2$-7s] [%3$s] %4$s%n",
                             record.getMillis(),
                             record.getLevel().getName(),
                             record.getLoggerName(),
                             formatMessage(record)
-                    );
+                    ));
+                    if (record.getThrown() != null) {
+                        java.io.StringWriter sw = new java.io.StringWriter();
+                        record.getThrown().printStackTrace(new java.io.PrintWriter(sw));
+                        sb.append(sw);
+                    }
+                    return sb.toString();
                 }
             });
 

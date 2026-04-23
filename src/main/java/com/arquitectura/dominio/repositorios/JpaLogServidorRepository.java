@@ -6,6 +6,7 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityTransaction;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 public class JpaLogServidorRepository implements LogServidorRepository {
 
@@ -30,6 +31,18 @@ public class JpaLogServidorRepository implements LogServidorRepository {
                 transaction.rollback();
             }
             throw new IllegalStateException("No fue posible guardar el log del servidor en MySQL", e);
+        } finally {
+            entityManager.close();
+        }
+    }
+
+    @Override
+    public List<LogServidorModel> listarTodos() {
+        EntityManager entityManager = HibernateManager.crearEntityManager();
+        try {
+            return entityManager
+                    .createQuery("SELECT l FROM LogServidorModel l ORDER BY l.fechaEvento DESC", LogServidorModel.class)
+                    .getResultList();
         } finally {
             entityManager.close();
         }

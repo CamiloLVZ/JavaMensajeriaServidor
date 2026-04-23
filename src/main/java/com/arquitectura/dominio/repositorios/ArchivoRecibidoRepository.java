@@ -4,6 +4,7 @@ import com.arquitectura.dominio.modelo.ArchivoRecibidoModel;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 public interface ArchivoRecibidoRepository {
 
@@ -12,4 +13,6 @@ public interface ArchivoRecibidoRepository {
                  long tamano, LocalDateTime fechaRecepcion);
 
     List<ArchivoRecibidoModel> listarTodos();
+
+    Optional<ArchivoRecibidoModel> buscarPorId(String id);
 }

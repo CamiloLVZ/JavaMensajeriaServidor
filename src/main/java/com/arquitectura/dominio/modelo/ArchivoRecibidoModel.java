@@ -33,7 +33,7 @@ public class ArchivoRecibidoModel {
     @Column(name = "hash_sha256", nullable = false, length = 88)
     private String hashSha256;
 
-    @Column(name = "contenido_cifrado", nullable = false, columnDefinition = "LONGTEXT")
+    @Column(name = "contenido_cifrado", columnDefinition = "LONGTEXT")
     private String contenidoCifrado;
 
     @Column(nullable = false)

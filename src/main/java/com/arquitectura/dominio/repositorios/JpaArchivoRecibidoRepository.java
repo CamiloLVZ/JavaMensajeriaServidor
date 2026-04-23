@@ -7,6 +7,7 @@ import jakarta.persistence.EntityTransaction;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 public class JpaArchivoRecibidoRepository implements ArchivoRecibidoRepository {
 
@@ -52,6 +53,16 @@ public class JpaArchivoRecibidoRepository implements ArchivoRecibidoRepository {
                 "SELECT a FROM ArchivoRecibidoModel a ORDER BY a.fechaRecepcion DESC",
                 ArchivoRecibidoModel.class
             ).getResultList();
+        } finally {
+            em.close();
+        }
+    }
+
+    @Override
+    public Optional<ArchivoRecibidoModel> buscarPorId(String id) {
+        EntityManager em = HibernateManager.crearEntityManager();
+        try {
+            return Optional.ofNullable(em.find(ArchivoRecibidoModel.class, id));
         } finally {
             em.close();
         }

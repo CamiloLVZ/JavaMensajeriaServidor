@@ -143,6 +143,11 @@ public class GestorSesiones {
         return sesionesPorUsername.size();
     }
 
+    public java.util.Collection<SesionCliente> listarSesiones() {
+        limpiarExpiradas();
+        return java.util.Collections.unmodifiableCollection(sesionesPorUsername.values());
+    }
+
     public synchronized void cerrarTodas() {
         sesionesPorUsername.clear();
     }
