@@ -37,6 +37,9 @@ public class ListarDocumentosHandler implements Handler<Object> {
                 map.put("size", a.getTamano());
                 map.put("type", a.getExtension());
                 map.put("date", a.getFechaRecepcion() != null ? a.getFechaRecepcion().toString() : "");
+                map.put("hashSha256", a.getHashSha256());
+                map.put("ipRemitente", a.getIpRemitente());
+                map.put("origen", esLocal(a.getIpRemitente()) ? "LOCAL" : "EXTERNO");
                 resultado.add(map);
             }
 
@@ -74,6 +77,12 @@ public class ListarDocumentosHandler implements Handler<Object> {
     @Override
     public Class<Object> getPayloadClass() {
         return Object.class;
+    }
+
+    private boolean esLocal(String ip) {
+        if (ip == null) return false;
+        return "127.0.0.1".equals(ip) || "localhost".equals(ip)
+                || "0:0:0:0:0:0:0:1".equals(ip) || "::1".equals(ip);
     }
 
     private Metadata crearMetadata() {

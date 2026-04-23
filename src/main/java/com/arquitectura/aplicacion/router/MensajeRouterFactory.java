@@ -1,6 +1,7 @@
 package com.arquitectura.aplicacion.router;
 
 import com.arquitectura.dominio.handlers.ConectarHandler;
+import com.arquitectura.dominio.handlers.DesconectarHandler;
 import com.arquitectura.dominio.handlers.EnviarArchivoHandler;
 import com.arquitectura.dominio.handlers.FinalizarStreamHandler;
 import com.arquitectura.dominio.handlers.IniciarStreamHandler;
@@ -18,6 +19,7 @@ public class MensajeRouterFactory {
 
         MensajeRouter router = new MensajeRouter();
         router.registrarHandler(Accion.CONECTAR,          new ConectarHandler());
+        router.registrarHandler(Accion.DESCONECTAR,        new DesconectarHandler());
         router.registrarHandler(Accion.ENVIAR_DOCUMENTO,  new EnviarArchivoHandler());
         router.registrarHandler(Accion.ENVIAR_MENSAJE,    new MensajeTextoHandler());
         router.registrarHandler(Accion.LISTAR_MENSAJES,   new ListarMensajesHandler());

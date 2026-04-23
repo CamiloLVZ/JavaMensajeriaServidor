@@ -136,6 +136,16 @@ public class GestorSesiones {
         }
     }
 
+    public boolean eliminar(String username) {
+        if (username == null || username.isBlank()) return false;
+        lock.writeLock().lock();
+        try {
+            return sesionesPorUsername.remove(normalizar(username)) != null;
+        } finally {
+            lock.writeLock().unlock();
+        }
+    }
+
     public void marcarActividad(String username) {
         if (username == null || username.isBlank()) {
             return;

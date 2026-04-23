@@ -35,6 +35,10 @@ public class ListarMensajesHandler implements Handler<Object> {
                 map.put("clientId", m.getAutor());
                 map.put("content", m.getContenido());
                 map.put("timestamp", m.getFechaEnvio() != null ? m.getFechaEnvio().toString() : "");
+                map.put("hashSha256", m.getHashSha256());
+                map.put("contenidoCifrado", m.getContenidoCifrado());
+                map.put("ipRemitente", m.getIpRemitente());
+                map.put("origen", esLocal(m.getIpRemitente()) ? "LOCAL" : "EXTERNO");
                 resultado.add(map);
             }
 
@@ -72,6 +76,12 @@ public class ListarMensajesHandler implements Handler<Object> {
     @Override
     public Class<Object> getPayloadClass() {
         return Object.class;
+    }
+
+    private boolean esLocal(String ip) {
+        if (ip == null) return false;
+        return "127.0.0.1".equals(ip) || "localhost".equals(ip)
+                || "0:0:0:0:0:0:0:1".equals(ip) || "::1".equals(ip);
     }
 
     private Metadata crearMetadata() {

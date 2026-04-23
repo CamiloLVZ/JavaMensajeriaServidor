@@ -47,4 +47,28 @@ public class JpaLogServidorRepository implements LogServidorRepository {
             entityManager.close();
         }
     }
+
+    @Override
+    public List<LogServidorModel> listarPaginado(int pagina, int tamanoPagina) {
+        EntityManager em = HibernateManager.crearEntityManager();
+        try {
+            return em.createQuery("SELECT l FROM LogServidorModel l ORDER BY l.fechaEvento DESC", LogServidorModel.class)
+                    .setFirstResult(pagina * tamanoPagina)
+                    .setMaxResults(tamanoPagina)
+                    .getResultList();
+        } finally {
+            em.close();
+        }
+    }
+
+    @Override
+    public long contarTotal() {
+        EntityManager em = HibernateManager.crearEntityManager();
+        try {
+            return em.createQuery("SELECT COUNT(l) FROM LogServidorModel l", Long.class)
+                    .getSingleResult();
+        } finally {
+            em.close();
+        }
+    }
 }

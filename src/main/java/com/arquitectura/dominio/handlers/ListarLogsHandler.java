@@ -27,7 +27,18 @@ public class ListarLogsHandler implements Handler<Object> {
     @Override
     public Respuesta<?> handle(Mensaje<Object> mensaje) {
         try {
-            List<LogServidorModel> logs = logRepository.listarTodos();
+            int pagina = 0;
+            int tamanoPagina = 50;
+
+            if (mensaje.getPayload() instanceof Map<?,?> payloadMap) {
+                Object pag = payloadMap.get("pagina");
+                Object tam = payloadMap.get("tamanoPagina");
+                if (pag != null) pagina = ((Number) pag).intValue();
+                if (tam != null) tamanoPagina = Math.min(((Number) tam).intValue(), 200);
+            }
+
+            List<LogServidorModel> logs = logRepository.listarPaginado(pagina, tamanoPagina);
+            long totalRegistros = logRepository.contarTotal();
 
             List<Map<String, Object>> resultado = new ArrayList<>();
             for (LogServidorModel l : logs) {
@@ -45,15 +56,22 @@ public class ListarLogsHandler implements Handler<Object> {
                 resultado.add(map);
             }
 
-            LOGGER.info(() -> "Listando logs: %d registros".formatted(resultado.size()));
+            LOGGER.info(() -> "Listando logs: página %d, %d registros de %d totales".formatted(pagina, resultado.size(), totalRegistros));
 
-            Mensaje<List<Map<String, Object>>> mensajeRespuesta = new Mensaje<>();
+            Map<String, Object> paginatedPayload = new HashMap<>();
+            paginatedPayload.put("registros", resultado);
+            paginatedPayload.put("pagina", pagina);
+            paginatedPayload.put("tamanoPagina", tamanoPagina);
+            paginatedPayload.put("totalRegistros", totalRegistros);
+            paginatedPayload.put("totalPaginas", (int) Math.ceil((double) totalRegistros / tamanoPagina));
+
+            Mensaje<Map<String, Object>> mensajeRespuesta = new Mensaje<>();
             mensajeRespuesta.setTipo(TipoMensaje.RESPONSE);
             mensajeRespuesta.setAccion(Accion.LISTAR_LOGS);
             mensajeRespuesta.setMetadata(crearMetadata());
-            mensajeRespuesta.setPayload(resultado);
+            mensajeRespuesta.setPayload(paginatedPayload);
 
-            Respuesta<List<Map<String, Object>>> respuesta = new Respuesta<>();
+            Respuesta<Map<String, Object>> respuesta = new Respuesta<>();
             respuesta.setEstado(Estado.EXITO);
             respuesta.setMensaje(mensajeRespuesta);
 

@@ -10,4 +10,8 @@ public interface LogServidorRepository {
     void guardar(String nivel, String mensaje, String origen, String ipRemitente, LocalDateTime fechaEvento);
 
     List<LogServidorModel> listarTodos();
+
+    List<LogServidorModel> listarPaginado(int pagina, int tamanoPagina);
+
+    long contarTotal();
 }
