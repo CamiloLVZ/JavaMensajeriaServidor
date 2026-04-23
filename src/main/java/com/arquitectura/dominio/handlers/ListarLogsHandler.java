@@ -56,12 +56,14 @@ public class ListarLogsHandler implements Handler<Object> {
                 resultado.add(map);
             }
 
-            LOGGER.info(() -> "Listando logs: página %d, %d registros de %d totales".formatted(pagina, resultado.size(), totalRegistros));
+            final int paginaFinal = pagina;
+            final int tamanoPaginaFinal = tamanoPagina;
+            LOGGER.info(() -> "Listando logs: página %d, %d registros de %d totales".formatted(paginaFinal, resultado.size(), totalRegistros));
 
             Map<String, Object> paginatedPayload = new HashMap<>();
             paginatedPayload.put("registros", resultado);
-            paginatedPayload.put("pagina", pagina);
-            paginatedPayload.put("tamanoPagina", tamanoPagina);
+            paginatedPayload.put("pagina", paginaFinal);
+            paginatedPayload.put("tamanoPagina", tamanoPaginaFinal);
             paginatedPayload.put("totalRegistros", totalRegistros);
             paginatedPayload.put("totalPaginas", (int) Math.ceil((double) totalRegistros / tamanoPagina));
 
