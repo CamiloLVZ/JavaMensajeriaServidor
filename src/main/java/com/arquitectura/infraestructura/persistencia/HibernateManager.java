@@ -31,6 +31,16 @@ public final class HibernateManager {
         config.put("hibernate.format_sql", properties.getProperty("hibernate.format_sql", "false"));
         config.put("hibernate.dialect", "org.hibernate.dialect.MySQLDialect");
 
+        // HikariCP — connection pool real. Sin esto Hibernate usa 1 sola conexión
+        // y todos los workers se bloquean entre sí esperando turno.
+        config.put("hibernate.connection.provider_class",
+                "org.hibernate.hikaricp.internal.HikariCPConnectionProvider");
+        config.put("hibernate.hikari.minimumIdle", "2");
+        config.put("hibernate.hikari.maximumPoolSize",
+                properties.getProperty("db.pool.size", "10"));
+        config.put("hibernate.hikari.connectionTimeout", "5000");
+        config.put("hibernate.hikari.idleTimeout", "60000");
+
         try {
             entityManagerFactory = Persistence.createEntityManagerFactory("mensajeriaPU", config);
             validarConexion();

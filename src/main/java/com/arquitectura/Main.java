@@ -78,12 +78,27 @@ public class Main {
 
             LOGGER.info(() -> "Servidor iniciado. Protocolo: " + transporte.getNombre() + " | Puerto: "+ puerto +" | max-clients=" + maxClientes);
 
+            long requestCounter = 0;
+
             while (true) {
                 // El transporte abstrae TCP/UDP. Siempre devolvemos el mismo DTO PaqueteDatos.
                 PaqueteDatos paquete = transporte.recibir();
+                requestCounter++;
+                final long reqNum = requestCounter;
 
-                // Si no hay tareas libres en el pool, esperamos. Esto impone el límite máximo.
-                AtencionClienteTask tarea = poolTareas.tomar();
+                // Intenta tomar una tarea del pool CON TIMEOUT.
+                // Si no hay workers libres en 200ms, rechaza la conexión y vuelve a accept().
+                // Esto NUNCA bloquea el hilo main indefinidamente.
+                AtencionClienteTask tarea = poolTareas.tomar(200, TimeUnit.MILLISECONDS);
+
+                if (tarea == null) {
+                    // Capacidad agotada — cerrar la conexión del cliente sin bloquear el main.
+                    LOGGER.warning(() -> "[Request #" + reqNum + "] Capacidad maxima alcanzada. Rechazando conexion. Sesiones activas: " + GestorSesiones.getInstance().sesionesActivas());
+                    cerrarPaquete(paquete, transporte);
+                    continue;
+                }
+
+                LOGGER.fine(() -> "[Request #" + reqNum + "] Tarea obtenida del pool, despachando a worker");
 
                 // Se prepara la tarea con el request actual y su retorno al Object Pool.
                 tarea.preparar(paquete, procesador, sender, transporte, () -> poolTareas.devolver(tarea));
@@ -96,6 +111,30 @@ public class Main {
             LOGGER.log(Level.SEVERE, "Servidor interrumpido", e);
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "Error en servidor", e);
+        }
+    }
+
+    /**
+     * Cierra la conexión de un cliente rechazado por falta de capacidad.
+     * Para TCP cierra el socket; para UDP simplemente se descarta el datagrama.
+     */
+    private static void cerrarPaquete(PaqueteDatos paquete, ProtocoloTransporte transporte) {
+        try {
+            if (paquete.getSocket() != null && !paquete.getSocket().isClosed()) {
+                // Intentar enviar un error antes de cerrar (best-effort).
+                try {
+                    var writer = new java.io.BufferedWriter(
+                            new java.io.OutputStreamWriter(paquete.getSocket().getOutputStream()));
+                    writer.write("{\"estado\":\"ERROR\",\"error\":{\"codigo\":\"SERVIDOR_OCUPADO\",\"detalle\":\"Servidor a capacidad maxima, reintente luego\"}}");
+                    writer.newLine();
+                    writer.flush();
+                } catch (Exception ignored) {
+                    // Best-effort — si falla, simplemente cerramos.
+                }
+                paquete.getSocket().close();
+            }
+        } catch (Exception e) {
+            LOGGER.log(Level.FINE, "Error cerrando paquete rechazado", e);
         }
     }
 }

@@ -4,6 +4,7 @@ import com.arquitectura.aplicacion.ProcesadorMensajes;
 import com.arquitectura.aplicacion.RespuestaSender;
 import com.arquitectura.comun.dto.PaqueteDatos;
 import com.arquitectura.infraestructura.transporte.ProtocoloTransporte;
+import com.arquitectura.infraestructura.transporte.TcpProtocoloTransporte;
 
 import java.io.IOException;
 import java.util.logging.Level;
@@ -46,18 +47,59 @@ public class AtencionClienteTask implements Runnable {
 
     @Override
     public void run() {
+        String threadName = Thread.currentThread().getName();
+        LOGGER.info(() -> "[" + threadName + "] Worker iniciando atencion de cliente");
         try {
-            String respuesta = procesador.procesar(paquete);
-            sender.enviar(paquete, respuesta, transporte);
+            // Para TCP, el paquete llega con socket pero sin datos (el main solo hizo accept).
+            // La lectura real ocurre acá, en el worker thread.
+            PaqueteDatos paqueteReal = resolverPaquete();
+            if (paqueteReal == null) {
+                LOGGER.info(() -> "[" + threadName + "] Paquete nulo (streaming o conexion vacia). Liberando worker.");
+                return;
+            }
+
+            LOGGER.info(() -> "[" + threadName + "] Procesando mensaje JSON del cliente");
+            String respuesta = procesador.procesar(paqueteReal);
+            sender.enviar(paqueteReal, respuesta, transporte);
+            LOGGER.info(() -> "[" + threadName + "] Respuesta enviada correctamente");
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Error atendiendo cliente", e);
+            LOGGER.log(Level.SEVERE, "[" + threadName + "] Error atendiendo cliente", e);
         } finally {
+            // IMPORTANTE: capturar el callback ANTES de limpiar estado,
+            // porque limpiarEstado() anula todas las referencias (incluido onFinish).
+            Runnable retornoAlPool = onFinish;
+
             limpiarEstado();
 
-            if (onFinish != null) {
-                onFinish.run();
+            if (retornoAlPool != null) {
+                LOGGER.info(() -> "[" + threadName + "] Devolviendo tarea al pool");
+                retornoAlPool.run();
+            } else {
+                LOGGER.warning(() -> "[" + threadName + "] onFinish era null — tarea NO devuelta al pool!");
             }
         }
+    }
+
+    /**
+     * Si el transporte es TCP y el paquete no tiene datos todavía,
+     * delega la lectura al transporte para que resuelva el tipo de mensaje
+     * (JSON, upload o download) — todo en este hilo worker.
+     *
+     * Cuando el transporte despacha streaming (upload/download), la propiedad
+     * del socket se transfiere al hilo de streaming. En ese caso se anula
+     * {@code this.paquete} para que {@link #limpiarEstado()} NO cierre el socket.
+     */
+    private PaqueteDatos resolverPaquete() throws IOException {
+        if (transporte instanceof TcpProtocoloTransporte tcp && paquete.getData() == null) {
+            PaqueteDatos resultado = tcp.leerDesdSocket(paquete.getSocket());
+            if (resultado == null) {
+                // Socket ownership transferido al streaming handler (o conexión vacía/cerrada).
+                // Anular paquete para que limpiarEstado() no cierre el socket.
+                paquete = null;
+            }
+            return resultado;
+        }
+        return paquete;
     }
 
     /**

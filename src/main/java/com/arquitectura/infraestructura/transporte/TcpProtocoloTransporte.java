@@ -30,6 +30,13 @@ public class TcpProtocoloTransporte implements ProtocoloTransporte {
     /** Señal de descarga (cliente → servidor para pedir chunks). */
     static final byte STREAM_SIGNAL_DOWNLOAD = 0x03;
 
+    /**
+     * Timeout de lectura/escritura por socket de cliente.
+     * Si un cliente tarda más de este tiempo en enviar o en leer la respuesta,
+     * el socket lanza SocketTimeoutException y el worker queda libre.
+     */
+    private static final int SOCKET_TIMEOUT_MS = 10_000;
+
     private ServerSocket serverSocket;
 
     /** Hilo dedicado para operaciones de streaming (upload/download) — no bloquea el accept(). */
@@ -66,36 +73,16 @@ public class TcpProtocoloTransporte implements ProtocoloTransporte {
     public PaqueteDatos recibir() {
         while (true) {
             try {
+                // El hilo main solo hace accept() — nada más.
+                // Toda la lectura (primer byte, JSON, streaming) ocurre en el worker.
                 Socket cliente = serverSocket.accept();
-                PushbackInputStream pis = new PushbackInputStream(cliente.getInputStream());
 
-                int primerByte = pis.read();
-                if (primerByte == -1) {
-                    cliente.close();
-                    continue;
-                }
+                // Sin timeout, un cliente que no envía (o no lee) bloquea el worker
+                // para siempre. Con timeout, el socket lanza SocketTimeoutException
+                // y el worker queda libre para atender al siguiente.
+                cliente.setSoTimeout(SOCKET_TIMEOUT_MS);
 
-                if ((byte) primerByte == STREAM_SIGNAL_UPLOAD) {
-                    manejarSubidaTcp(cliente);
-                    continue;
-                }
-
-                if ((byte) primerByte == STREAM_SIGNAL_DOWNLOAD) {
-                    manejarDescargaTcp(cliente);
-                    continue;
-                }
-
-                // JSON normal
-                pis.unread(primerByte);
-                BufferedReader reader = new BufferedReader(new InputStreamReader(pis, StandardCharsets.UTF_8));
-                String json = reader.readLine();
-
-                if (json == null || json.isBlank()) {
-                    cliente.close();
-                    continue;
-                }
-
-                return new PaqueteDatos(json.getBytes(StandardCharsets.UTF_8), cliente);
+                return new PaqueteDatos(null, cliente);
 
             } catch (Exception e) {
                 if (serverSocket.isClosed()) {
@@ -106,9 +93,48 @@ public class TcpProtocoloTransporte implements ProtocoloTransporte {
         }
     }
 
+    /**
+     * Lee el primer byte del socket y decide si es streaming o JSON.
+     * Llamado desde el worker thread (AtencionClienteTask), no desde el hilo main.
+     */
+    public PaqueteDatos leerDesdSocket(Socket cliente) throws IOException {
+        PushbackInputStream pis = new PushbackInputStream(cliente.getInputStream());
+
+        int primerByte = pis.read();
+        if (primerByte == -1) {
+            cliente.close();
+            return null;
+        }
+
+        if ((byte) primerByte == STREAM_SIGNAL_UPLOAD) {
+            manejarSubidaTcp(cliente);
+            return null;
+        }
+
+        if ((byte) primerByte == STREAM_SIGNAL_DOWNLOAD) {
+            manejarDescargaTcp(cliente);
+            return null;
+        }
+
+        // JSON normal
+        pis.unread(primerByte);
+        BufferedReader reader = new BufferedReader(new InputStreamReader(pis, StandardCharsets.UTF_8));
+        String json = reader.readLine();
+
+        if (json == null || json.isBlank()) {
+            cliente.close();
+            return null;
+        }
+
+        return new PaqueteDatos(json.getBytes(StandardCharsets.UTF_8), cliente);
+    }
+
     private void manejarSubidaTcp(Socket cliente) {
         streamingExecutor.submit(() -> {
             try {
+                // Para streaming de archivos el timeout de control no aplica —
+                // la transferencia puede durar más de SOCKET_TIMEOUT_MS.
+                cliente.setSoTimeout(0);
                 streamReceptor.recibirArchivo(cliente);
             } catch (Exception e) {
                 LOGGER.warning(() -> "Error en streaming de subida TCP: " + e.getMessage());
@@ -121,6 +147,7 @@ public class TcpProtocoloTransporte implements ProtocoloTransporte {
     private void manejarDescargaTcp(Socket cliente) {
         streamingExecutor.submit(() -> {
             try {
+                cliente.setSoTimeout(0);
                 streamEmisor.emitirArchivo(cliente);
             } catch (Exception e) {
                 LOGGER.warning(() -> "Error en streaming de descarga TCP: " + e.getMessage());

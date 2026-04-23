@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
  * Gestor singleton de sesiones en memoria.
@@ -20,6 +21,9 @@ public class GestorSesiones {
     private static final GestorSesiones INSTANCE = new GestorSesiones();
 
     private final Map<String, SesionCliente> sesionesPorUsername = new ConcurrentHashMap<>();
+
+    /** Lock para proteger mutaciones del mapa. Lecturas puras no lo necesitan (ConcurrentHashMap). */
+    private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
 
     private volatile int maxSesiones = 10;
     private volatile Duration timeoutInactividad = Duration.ofMinutes(30);
@@ -41,84 +45,95 @@ public class GestorSesiones {
     /**
      * Registra una sesion nueva si el username esta libre y hay cupo.
      */
-    public synchronized ResultadoRegistroSesion registrar(String username, String endpoint, String protocolo) {
+    public ResultadoRegistroSesion registrar(String username, String endpoint, String protocolo) {
         return registrar(username, extraerIp(endpoint), extraerPuerto(endpoint), protocolo);
     }
 
-    public synchronized ResultadoRegistroSesion registrar(String username, String ipRemitente, int puertoRemitente, String protocolo) {
-        limpiarExpiradas();
+    public ResultadoRegistroSesion registrar(String username, String ipRemitente, int puertoRemitente, String protocolo) {
+        lock.writeLock().lock();
+        try {
+            limpiarExpiradasInterno();
 
-        String usernameNormalizado = normalizar(username);
-        if (usernameNormalizado.isBlank()) {
-            return ResultadoRegistroSesion.error("USERNAME_INVALIDO", "El username es obligatorio");
-        }
-
-        SesionCliente existente = sesionesPorUsername.get(usernameNormalizado);
-        if (existente != null) {
-            if (existente.mismaConexion(ipRemitente, puertoRemitente, protocolo)) {
-                existente.marcarActividad();
-                return ResultadoRegistroSesion.ok(existente, "Sesion ya existente para el usuario");
+            String usernameNormalizado = normalizar(username);
+            if (usernameNormalizado.isBlank()) {
+                return ResultadoRegistroSesion.error("USERNAME_INVALIDO", "El username es obligatorio");
             }
 
-            // Para reconexiones del mismo cliente aceptamos el mismo usuario si mantiene IP y protocolo.
-            if (existente.mismoCanalLogico(ipRemitente, protocolo)) {
-                existente.actualizarOrigen(ipRemitente, puertoRemitente, protocolo);
-                return ResultadoRegistroSesion.reconexion(existente, "Sesion actualizada para nueva conexion del mismo cliente");
+            SesionCliente existente = sesionesPorUsername.get(usernameNormalizado);
+            if (existente != null) {
+                if (existente.mismaConexion(ipRemitente, puertoRemitente, protocolo)) {
+                    existente.marcarActividad();
+                    return ResultadoRegistroSesion.ok(existente, "Sesion ya existente para el usuario");
+                }
+
+                if (existente.mismoCanalLogico(ipRemitente, protocolo)) {
+                    existente.actualizarOrigen(ipRemitente, puertoRemitente, protocolo);
+                    return ResultadoRegistroSesion.reconexion(existente, "Sesion actualizada para nueva conexion del mismo cliente");
+                }
+
+                return ResultadoRegistroSesion.error("USERNAME_YA_REGISTRADO", "El username ya esta en uso");
             }
 
-            return ResultadoRegistroSesion.error("USERNAME_YA_REGISTRADO", "El username ya esta en uso");
-        }
+            if (sesionesPorUsername.size() >= maxSesiones) {
+                return ResultadoRegistroSesion.error("MAX_SESIONES_ALCANZADO", "No hay cupo para nuevas sesiones");
+            }
 
-        if (sesionesPorUsername.size() >= maxSesiones) {
-            return ResultadoRegistroSesion.error("MAX_SESIONES_ALCANZADO", "No hay cupo para nuevas sesiones");
+            SesionCliente sesion = new SesionCliente(usernameNormalizado, ipRemitente, puertoRemitente, protocolo);
+            sesionesPorUsername.put(usernameNormalizado, sesion);
+            return ResultadoRegistroSesion.ok(sesion, "Sesion registrada correctamente");
+        } finally {
+            lock.writeLock().unlock();
         }
-
-        SesionCliente sesion = new SesionCliente(usernameNormalizado, ipRemitente, puertoRemitente, protocolo);
-        sesionesPorUsername.put(usernameNormalizado, sesion);
-        return ResultadoRegistroSesion.ok(sesion, "Sesion registrada correctamente");
     }
 
     public boolean existeSesionActiva(String username) {
-        limpiarExpiradas();
-        if (username == null || username.isBlank()) {
+        if (username == null || username.isBlank()) return false;
+        SesionCliente sesion = sesionesPorUsername.get(normalizar(username));
+        if (sesion == null) return false;
+        // Expiración lazy: si el único acceso es leer, no purgamos todo el mapa
+        if (Duration.between(sesion.getUltimoAcceso(), Instant.now()).compareTo(timeoutInactividad) > 0) {
+            sesionesPorUsername.remove(normalizar(username));
             return false;
         }
-        SesionCliente sesion = sesionesPorUsername.get(normalizar(username));
-        return sesion != null;
+        return true;
     }
 
     public Optional<SesionCliente> obtener(String username) {
-        limpiarExpiradas();
-        if (username == null || username.isBlank()) {
-            return Optional.empty();
-        }
-        return Optional.ofNullable(sesionesPorUsername.get(normalizar(username)));
+        if (username == null || username.isBlank()) return Optional.empty();
+        SesionCliente sesion = sesionesPorUsername.get(normalizar(username));
+        return Optional.ofNullable(sesion);
     }
 
     public ResultadoValidacionSesion validarSesion(String username, String ipRemitente, int puertoRemitente, String protocolo) {
-        limpiarExpiradas();
-        if (username == null || username.isBlank()) {
-            return ResultadoValidacionSesion.error("SESION_NO_REGISTRADA", "El usuario no fue informado");
-        }
+        // La validación puede necesitar actualizar el puerto (UDP efímero) — write lock.
+        lock.writeLock().lock();
+        try {
+            limpiarExpiradasInterno();
+            if (username == null || username.isBlank()) {
+                return ResultadoValidacionSesion.error("SESION_NO_REGISTRADA", "El usuario no fue informado");
+            }
 
-        SesionCliente sesion = sesionesPorUsername.get(normalizar(username));
-        if (sesion == null) {
-            return ResultadoValidacionSesion.error(
-                    "SESION_NO_REGISTRADA",
-                    "El usuario [" + username + "] no tiene una sesion activa. Primero debe registrarse."
-            );
-        }
+            SesionCliente sesion = sesionesPorUsername.get(normalizar(username));
+            if (sesion == null) {
+                return ResultadoValidacionSesion.error(
+                        "SESION_NO_REGISTRADA",
+                        "El usuario [" + username + "] no tiene una sesion activa. Primero debe registrarse."
+                );
+            }
 
-        if (!sesion.aceptaOperacionDesde(ipRemitente, puertoRemitente, protocolo)) {
-            return ResultadoValidacionSesion.error(
-                    "ORIGEN_SESION_INVALIDO",
-                    "La sesion activa de [" + sesion.getUsername() + "] no corresponde al origen actual "
-                            + describirOrigen(ipRemitente, puertoRemitente, protocolo)
-            );
-        }
+            if (!sesion.aceptaOperacionDesde(ipRemitente, puertoRemitente, protocolo)) {
+                return ResultadoValidacionSesion.error(
+                        "ORIGEN_SESION_INVALIDO",
+                        "La sesion activa de [" + sesion.getUsername() + "] no corresponde al origen actual "
+                                + describirOrigen(ipRemitente, puertoRemitente, protocolo)
+                );
+            }
 
-        sesion.marcarActividad();
-        return ResultadoValidacionSesion.ok(sesion);
+            sesion.marcarActividad();
+            return ResultadoValidacionSesion.ok(sesion);
+        } finally {
+            lock.writeLock().unlock();
+        }
     }
 
     public void marcarActividad(String username) {
@@ -131,7 +146,17 @@ public class GestorSesiones {
         }
     }
 
-    public synchronized void limpiarExpiradas() {
+    public void limpiarExpiradas() {
+        lock.writeLock().lock();
+        try {
+            limpiarExpiradasInterno();
+        } finally {
+            lock.writeLock().unlock();
+        }
+    }
+
+    /** Versión interna — solo llamar con el write lock ya tomado. */
+    private void limpiarExpiradasInterno() {
         Instant ahora = Instant.now();
         sesionesPorUsername.entrySet().removeIf(entry ->
                 Duration.between(entry.getValue().getUltimoAcceso(), ahora).compareTo(timeoutInactividad) > 0
@@ -139,17 +164,20 @@ public class GestorSesiones {
     }
 
     public int sesionesActivas() {
-        limpiarExpiradas();
         return sesionesPorUsername.size();
     }
 
     public java.util.Collection<SesionCliente> listarSesiones() {
-        limpiarExpiradas();
         return java.util.Collections.unmodifiableCollection(sesionesPorUsername.values());
     }
 
-    public synchronized void cerrarTodas() {
-        sesionesPorUsername.clear();
+    public void cerrarTodas() {
+        lock.writeLock().lock();
+        try {
+            sesionesPorUsername.clear();
+        } finally {
+            lock.writeLock().unlock();
+        }
     }
 
     private String normalizar(String username) {
