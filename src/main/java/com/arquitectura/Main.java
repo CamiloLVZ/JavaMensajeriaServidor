@@ -56,10 +56,7 @@ public class Main {
             ProcesadorMensajes procesador = new ProcesadorMensajes(router);
             GestorSesiones.getInstance().configurar(maxClientes, Duration.ofMinutes(sessionTimeoutMinutos));
 
-            // Pool fijo de hilos: limita cuántos clientes se atienden en paralelo.
             ExecutorService ejecutorClientes = Executors.newFixedThreadPool(maxClientes);
-
-            // Object Pool de tareas reutilizables, también acotado por max-clients.
             ObjectPool<AtencionClienteTask> poolTareas = new ObjectPool<>(maxClientes, AtencionClienteTask::new);
 
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
@@ -76,19 +73,24 @@ public class Main {
                 }
             }));
 
-            LOGGER.info(() -> "Servidor iniciado. Protocolo: " + transporte.getNombre() + " | Puerto: "+ puerto +" | max-clients=" + maxClientes);
+            LOGGER.info(() -> "Servidor iniciado. Protocolo: " + transporte.getNombre() + " | Puerto: " + puerto + " | max-clients=" + maxClientes);
+
+            long requestCounter = 0;
 
             while (true) {
-                // El transporte abstrae TCP/UDP. Siempre devolvemos el mismo DTO PaqueteDatos.
                 PaqueteDatos paquete = transporte.recibir();
+                requestCounter++;
+                final long reqNum = requestCounter;
 
-                // Si no hay tareas libres en el pool, esperamos. Esto impone el límite máximo.
-                AtencionClienteTask tarea = poolTareas.tomar();
+                AtencionClienteTask tarea = poolTareas.tomar(200, TimeUnit.MILLISECONDS);
 
-                // Se prepara la tarea con el request actual y su retorno al Object Pool.
+                if (tarea == null) {
+                    LOGGER.warning(() -> "[Request #" + reqNum + "] Capacidad maxima alcanzada. Rechazando conexion. Sesiones activas: " + GestorSesiones.getInstance().sesionesActivas());
+                    cerrarPaquete(paquete);
+                    continue;
+                }
+
                 tarea.preparar(paquete, procesador, sender, transporte, () -> poolTareas.devolver(tarea));
-
-                // Ejecución concurrente de la atención del cliente.
                 ejecutorClientes.execute(tarea);
             }
         } catch (InterruptedException e) {
@@ -96,6 +98,23 @@ public class Main {
             LOGGER.log(Level.SEVERE, "Servidor interrumpido", e);
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "Error en servidor", e);
+        }
+    }
+
+    private static void cerrarPaquete(PaqueteDatos paquete) {
+        try {
+            if (paquete.getSocket() != null && !paquete.getSocket().isClosed()) {
+                try {
+                    var writer = new java.io.BufferedWriter(
+                            new java.io.OutputStreamWriter(paquete.getSocket().getOutputStream()));
+                    writer.write("{\"estado\":\"ERROR\",\"error\":{\"codigo\":\"SERVIDOR_OCUPADO\",\"detalle\":\"Servidor a capacidad maxima, reintente luego\"}}");
+                    writer.newLine();
+                    writer.flush();
+                } catch (Exception ignored) {}
+                paquete.getSocket().close();
+            }
+        } catch (Exception e) {
+            LOGGER.log(Level.FINE, "Error cerrando paquete rechazado", e);
         }
     }
 }

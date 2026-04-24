@@ -77,11 +77,18 @@ public class SesionCliente {
             return false;
         }
 
-        if ("TCP".equalsIgnoreCase(protocolo)) {
+        // UDP: los sockets son efímeros — el puerto cambia en cada datagrama.
+        // Basta verificar IP + protocolo. Actualizamos el puerto para mantener coherencia.
+        if ("UDP".equalsIgnoreCase(protocolo)) {
+            if (this.puertoRemitente != puertoRemitente) {
+                this.puertoRemitente = puertoRemitente;
+            }
             return true;
         }
 
-        return this.puertoRemitente == puertoRemitente;
+        // TCP: conexión persistente — el puerto es estable, no lo validamos
+        // (cada request abre una conexión nueva con puerto efímero distinto).
+        return true;
     }
 
     public void marcarActividad() {
