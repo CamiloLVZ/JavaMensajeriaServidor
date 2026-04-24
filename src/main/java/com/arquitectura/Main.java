@@ -56,10 +56,7 @@ public class Main {
             ProcesadorMensajes procesador = new ProcesadorMensajes(router);
             GestorSesiones.getInstance().configurar(maxClientes, Duration.ofMinutes(sessionTimeoutMinutos));
 
-            // Pool fijo de hilos: limita cuántos clientes se atienden en paralelo.
             ExecutorService ejecutorClientes = Executors.newFixedThreadPool(maxClientes);
-
-            // Object Pool de tareas reutilizables, también acotado por max-clients.
             ObjectPool<AtencionClienteTask> poolTareas = new ObjectPool<>(maxClientes, AtencionClienteTask::new);
 
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
@@ -76,34 +73,24 @@ public class Main {
                 }
             }));
 
-            LOGGER.info(() -> "Servidor iniciado. Protocolo: " + transporte.getNombre() + " | Puerto: "+ puerto +" | max-clients=" + maxClientes);
+            LOGGER.info(() -> "Servidor iniciado. Protocolo: " + transporte.getNombre() + " | Puerto: " + puerto + " | max-clients=" + maxClientes);
 
             long requestCounter = 0;
 
             while (true) {
-                // El transporte abstrae TCP/UDP. Siempre devolvemos el mismo DTO PaqueteDatos.
                 PaqueteDatos paquete = transporte.recibir();
                 requestCounter++;
                 final long reqNum = requestCounter;
 
-                // Intenta tomar una tarea del pool CON TIMEOUT.
-                // Si no hay workers libres en 200ms, rechaza la conexión y vuelve a accept().
-                // Esto NUNCA bloquea el hilo main indefinidamente.
                 AtencionClienteTask tarea = poolTareas.tomar(200, TimeUnit.MILLISECONDS);
 
                 if (tarea == null) {
-                    // Capacidad agotada — cerrar la conexión del cliente sin bloquear el main.
                     LOGGER.warning(() -> "[Request #" + reqNum + "] Capacidad maxima alcanzada. Rechazando conexion. Sesiones activas: " + GestorSesiones.getInstance().sesionesActivas());
-                    cerrarPaquete(paquete, transporte);
+                    cerrarPaquete(paquete);
                     continue;
                 }
 
-                LOGGER.fine(() -> "[Request #" + reqNum + "] Tarea obtenida del pool, despachando a worker");
-
-                // Se prepara la tarea con el request actual y su retorno al Object Pool.
                 tarea.preparar(paquete, procesador, sender, transporte, () -> poolTareas.devolver(tarea));
-
-                // Ejecución concurrente de la atención del cliente.
                 ejecutorClientes.execute(tarea);
             }
         } catch (InterruptedException e) {
@@ -114,23 +101,16 @@ public class Main {
         }
     }
 
-    /**
-     * Cierra la conexión de un cliente rechazado por falta de capacidad.
-     * Para TCP cierra el socket; para UDP simplemente se descarta el datagrama.
-     */
-    private static void cerrarPaquete(PaqueteDatos paquete, ProtocoloTransporte transporte) {
+    private static void cerrarPaquete(PaqueteDatos paquete) {
         try {
             if (paquete.getSocket() != null && !paquete.getSocket().isClosed()) {
-                // Intentar enviar un error antes de cerrar (best-effort).
                 try {
                     var writer = new java.io.BufferedWriter(
                             new java.io.OutputStreamWriter(paquete.getSocket().getOutputStream()));
                     writer.write("{\"estado\":\"ERROR\",\"error\":{\"codigo\":\"SERVIDOR_OCUPADO\",\"detalle\":\"Servidor a capacidad maxima, reintente luego\"}}");
                     writer.newLine();
                     writer.flush();
-                } catch (Exception ignored) {
-                    // Best-effort — si falla, simplemente cerramos.
-                }
+                } catch (Exception ignored) {}
                 paquete.getSocket().close();
             }
         } catch (Exception e) {
