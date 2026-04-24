@@ -87,20 +87,17 @@ public class FinalizarStreamHandler implements Handler<PayloadFinalizarStream> {
             Files.move(estado.getRutaTemporal(), rutaFinal);
 
             String ipRemitente = ContextoSolicitud.obtenerIpRemitente();
-            String mensajeId = UUID.randomUUID().toString();
             String nombreFinal = rutaFinal.getFileName().toString();
 
-            // Para archivos grandes NO ciframos en memoria — guardamos string vacío
-            // El hash ya garantiza integridad.
             repositorio.guardar(
-                    mensajeId,
+                    transferId,
                     remitente,
                     ipRemitente,
                     extraerNombreBase(nombreFinal),
                     estado.getExtension(),
                     rutaFinal.toAbsolutePath().toString(),
                     hashServidor,
-                    "",   // contenidoCifrado vacío — no aplica para streaming
+                    "",
                     estado.getTamanoTotal(),
                     LocalDateTime.now()
             );
